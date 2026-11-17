@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="Lunar" Language="1033" Version="$(var.LunarVersion)"
+           Manufacturer="Lunar" UpgradeCode="8338AE09-3E5B-4D99-A214-CE96F0C2FFB8">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perUser"
+             InstallPrivileges="limited" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Lunar is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <PropertyRef Id="WIX_IS_NETFRAMEWORK_48_OR_LATER_INSTALLED" />
+    <Condition Message="Lunar requires .NET Framework 4.8 or later.">Installed OR WIX_IS_NETFRAMEWORK_48_OR_LATER_INSTALLED</Condition>
+    <Icon Id="LunarIcon" SourceFile="lunar.ico" />
+    <Property Id="ARPPRODUCTICON" Value="LunarIcon" />
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="LocalAppDataFolder">
+        <Directory Id="LocalPrograms" Name="Programs">
+          <Directory Id="INSTALLFOLDER" Name="Lunar">
+            <Component Id="LunarProgram" Guid="E5A84B1A-39EB-4926-9989-1AD384DE2119">
+              <File Id="LunarExecutable" Name="Lunar.exe" Source="$(var.LunarExecutable)" />
+              <RegistryValue Root="HKCU" Key="Software\Lunar\Installer" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
+              <RemoveFolder Id="RemoveLunarDirectory" On="uninstall" />
+              <RemoveFolder Id="RemoveLocalProgramsIfEmpty" Directory="LocalPrograms" On="uninstall" />
+            </Component>
+          </Directory>
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Component Id="StartMenuShortcut" Guid="0252114F-A0D4-4265-BFC9-DB7596C68131">
+          <Shortcut Id="StartLunar" Name="Lunar" Target="[INSTALLFOLDER]Lunar.exe" WorkingDirectory="INSTALLFOLDER" Icon="LunarIcon" />
+          <RegistryValue Root="HKCU" Key="Software\Lunar\Installer" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </Directory>
+    <Feature Id="LunarFeature" Title="Lunar" Level="1">
+      <ComponentRef Id="LunarProgram" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+    <UI Id="LunarSetupUI">
+      <TextStyle Id="WixUI_Font_Normal" FaceName="Segoe UI" Size="9" />
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="Segoe UI" Size="12" />
+      <TextStyle Id="WixUI_Font_Title" FaceName="Segoe UI" Size="9" Bold="yes" />
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+      <DialogRef Id="WelcomeDlg" />
+      <DialogRef Id="VerifyReadyDlg" />
+      <DialogRef Id="ExitDialog" />
+      <DialogRef Id="ErrorDlg" />
+      <DialogRef Id="FatalError" />
+      <DialogRef Id="UserExit" />
+      <DialogRef Id="FilesInUse" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return">1</Publish>
+      <DialogRef Id="MaintenanceWelcomeDlg" />
+      <DialogRef Id="MaintenanceTypeDlg" />
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg">NOT Installed</Publish>
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg">Installed</Publish>
+      <Publish Dialog="MaintenanceWelcomeDlg" Control="Next" Event="NewDialog" Value="MaintenanceTypeDlg">1</Publish>
+      <Publish Dialog="MaintenanceTypeDlg" Control="RepairButton" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+      <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+      <Publish Dialog="MaintenanceTypeDlg" Control="Back" Event="NewDialog" Value="MaintenanceWelcomeDlg">1</Publish>
+      <Property Id="ARPNOMODIFY" Value="1" />
+    </UI>
+    <UIRef Id="WixUI_Common" />
+    <WixVariable Id="WixUIBannerBmp" Value="installer\wizard-banner.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="installer\wizard-dialog.bmp" />
+  </Product>
+</Wix>

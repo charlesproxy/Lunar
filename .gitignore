@@ -1,0 +1,12 @@
+# Build products
+/*.exe
+/Output/
+/bin/
+/obj/
+
+# Local configuration
+*.key
+.env
+.env.*
+*.user
+/*.msi

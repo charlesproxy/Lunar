@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="45%" r="65%">
+      <stop offset="0%" stop-color="#1A102B"/><stop offset="60%" stop-color="#0B0914"/><stop offset="100%" stop-color="#050408"/>
+    </radialGradient>
+    <linearGradient id="moon" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#D8B4FE"/><stop offset="45%" stop-color="#9333EA"/><stop offset="100%" stop-color="#4C1D95"/>
+    </linearGradient>
+    <linearGradient id="reticle" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#F3E8FF"/><stop offset="100%" stop-color="#A855F7"/>
+    </linearGradient>
+    <filter id="glow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="10" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#bg)" stroke="#2E1065" stroke-width="4"/>
+  <circle cx="256" cy="256" r="185" fill="none" stroke="#6B21A8" stroke-width="2" stroke-dasharray="18 12 4 12" opacity=".55"/>
+  <circle cx="256" cy="256" r="158" fill="none" stroke="#4C1D95" stroke-width="1.5" opacity=".4"/>
+  <g filter="url(#glow)" fill="url(#moon)">
+    <path d="M 326 106 A 162 162 0 0 0 112 318 L 166 292 A 146 146 0 0 1 326 106 Z"/>
+    <path d="M 124 340 A 162 162 0 0 0 326 406 A 146 146 0 0 1 178 314 Z"/>
+  </g>
+  <g filter="url(#glow)">
+    <path d="M292 186v38 M292 288v38 M222 256h38 M324 256h38" stroke="url(#reticle)" stroke-width="6" stroke-linecap="square"/>
+    <polygon points="292,238 310,256 292,274 274,256" fill="#F3E8FF"/>
+  </g>
+  <path d="M64 96V64H96 M448 416v32h-32" fill="none" stroke="#7E22CE" stroke-width="4" opacity=".7"/>
+</svg>
