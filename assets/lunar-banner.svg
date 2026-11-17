@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 440" width="1280" height="440">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#09070f"/><stop offset="55%" stop-color="#0d0a16"/><stop offset="100%" stop-color="#130d21"/>
+    </linearGradient>
+    <radialGradient id="glowLeft" cx="22%" cy="45%" r="45%"><stop offset="0%" stop-color="#7c3aed" stop-opacity=".24"/><stop offset="100%" stop-color="#7c3aed" stop-opacity="0"/></radialGradient>
+    <radialGradient id="glowRight" cx="78%" cy="50%" r="45%"><stop offset="0%" stop-color="#9333ea" stop-opacity=".18"/><stop offset="100%" stop-color="#9333ea" stop-opacity="0"/></radialGradient>
+    <linearGradient id="moonGradTop" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#c084fc"/><stop offset="100%" stop-color="#7e22ce"/></linearGradient>
+    <linearGradient id="logoBg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#0e0a18"/><stop offset="100%" stop-color="#07050c"/></linearGradient>
+    <filter id="purpleGlow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="4" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="cardShadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#000" flood-opacity=".65"/></filter>
+    <mask id="crescentMask"><rect width="120" height="120" fill="black"/><circle cx="58" cy="60" r="41" fill="white"/><circle cx="75" cy="56" r="35" fill="black"/><line x1="12" y1="84" x2="50" y2="63" stroke="black" stroke-width="5.5"/></mask>
+    <pattern id="dotGrid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1" fill="#a855f7" opacity=".12"/></pattern>
+  </defs>
+  <rect width="1280" height="440" rx="20" fill="url(#bgGrad)"/>
+  <rect width="1280" height="440" rx="20" fill="url(#dotGrid)"/>
+  <rect width="1280" height="440" rx="20" fill="url(#glowLeft)"/>
+  <rect width="1280" height="440" rx="20" fill="url(#glowRight)"/>
+  <rect x="1" y="1" width="1278" height="438" rx="19" fill="none" stroke="#2c1e4a" stroke-width="1.5"/>
+
+  <g transform="translate(68 72) scale(.95)">
+    <rect width="120" height="120" rx="28" fill="url(#logoBg)" stroke="#4c1d95" stroke-width="2"/>
+    <path d="M14 25V14h11M106 95v11H95" fill="none" stroke="#6b21a8" stroke-width="2"/>
+    <circle cx="60" cy="60" r="47" fill="none" stroke="#6b21a8" stroke-width="1.2" stroke-dasharray="6 4 2 4" opacity=".7"/>
+    <circle cx="60" cy="60" r="40" fill="none" stroke="#581c87" stroke-width=".9" opacity=".6"/>
+    <rect width="120" height="120" fill="url(#moonGradTop)" mask="url(#crescentMask)" filter="url(#purpleGlow)"/>
+    <g filter="url(#purpleGlow)">
+      <rect x="64" y="55" width="9" height="9" rx="1.5" transform="rotate(45 68.5 59.5)" fill="#f3e8ff"/>
+      <rect x="67" y="38" width="3" height="12" rx="1.5" fill="#d8b4fe"/><rect x="67" y="69" width="3" height="12" rx="1.5" fill="#a855f7"/>
+      <rect x="47" y="58" width="12" height="3" rx="1.5" fill="#d8b4fe"/><rect x="78" y="58" width="12" height="3" rx="1.5" fill="#d8b4fe"/>
+    </g>
+  </g>
+  <text x="205" y="130" font-family="Segoe UI,system-ui,sans-serif" font-size="60" font-weight="800" fill="#fff" letter-spacing="-1.5">Lunar</text>
+  <text x="208" y="160" font-family="Segoe UI,system-ui,sans-serif" font-size="14" font-weight="700" fill="#a855f7" letter-spacing="4.8">VALORANT TRACKER</text>
+  <text x="70" y="226" font-family="Segoe UI,system-ui,sans-serif" font-size="19" font-weight="500" fill="#c4bed4">Real-time match intelligence from Agent Select.</text>
+  <text x="70" y="254" font-family="Segoe UI,system-ui,sans-serif" font-size="15" fill="#847d96">Know your starting side, reveal hidden nicknames, check live ranks &amp; daily store.</text>
+
+  <g font-family="Segoe UI,system-ui,sans-serif" font-size="13" font-weight="600">
+    <rect x="70" y="294" width="212" height="36" rx="10" fill="#161124" stroke="#2f224d"/><circle cx="90" cy="312" r="4.5" fill="#f43f5e"/><text x="104" y="317" fill="#f1eff7">Starting Side (ATK / DEF)</text>
+    <rect x="294" y="294" width="198" height="36" rx="10" fill="#161124" stroke="#2f224d"/><circle cx="314" cy="312" r="4.5" fill="#a855f7"/><text x="328" y="317" fill="#f1eff7">Reveal Hidden Nicks</text>
+    <rect x="70" y="342" width="168" height="36" rx="10" fill="#161124" stroke="#2f224d"/><circle cx="90" cy="360" r="4.5" fill="#38bdf8"/><text x="104" y="365" fill="#f1eff7">Live Ranks &amp; Peak</text>
+    <rect x="250" y="342" width="206" height="36" rx="10" fill="#161124" stroke="#2f224d"/><circle cx="270" cy="360" r="4.5" fill="#c084fc"/><text x="284" y="365" fill="#f1eff7">Daily Store &amp; Crosshair</text>
+  </g>
+
+  <g filter="url(#cardShadow)"><rect x="650" y="46" width="566" height="348" rx="16" fill="#0f0c17" stroke="#2d2247" stroke-width="1.5"/></g>
+  <circle cx="676" cy="71" r="4.5" fill="#a855f7" filter="url(#purpleGlow)"/>
+  <text x="690" y="75" font-family="Segoe UI,system-ui,sans-serif" font-size="13.5" font-weight="700" fill="#f8fafc">Corrode · Live Match</text>
+  <rect x="1096" y="58" width="100" height="24" rx="6" fill="#1c162b" stroke="#31254d"/>
+  <text x="1146" y="74" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="10" font-weight="700" fill="#a19bb0" letter-spacing=".8">AGENT SELECT</text>
+  <line x1="650" y1="94" x2="1216" y2="94" stroke="#201833"/>
+
+  <rect x="668" y="110" width="166" height="266" rx="10" fill="#141020" stroke="#251c3b"/>
+  <text x="684" y="134" font-family="Segoe UI,system-ui,sans-serif" font-size="10" font-weight="700" fill="#7c758c" letter-spacing="1">STARTING SIDE</text>
+  <text x="684" y="164" font-family="Segoe UI,system-ui,sans-serif" font-size="25" font-weight="800" fill="#e85d6f">Attack</text>
+  <rect x="684" y="178" width="64" height="20" rx="5" fill="#3b1822" stroke="#7f293b"/>
+  <text x="716" y="191" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="9.5" font-weight="700" fill="#f87171">ATTACK</text>
+  <rect x="754" y="178" width="64" height="20" rx="5" fill="#131c2e" stroke="#223457"/>
+  <text x="786" y="191" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="9.5" font-weight="700" fill="#60a5fa">DEFENSE</text>
+  <line x1="684" y1="214" x2="818" y2="214" stroke="#231a38"/>
+  <text x="684" y="238" font-family="Segoe UI,system-ui,sans-serif" font-size="10" font-weight="700" fill="#7c758c" letter-spacing="1">HIDDEN NICKS</text>
+  <rect x="684" y="248" width="134" height="28" rx="6" fill="#1f1536" stroke="#6b21a8"/>
+  <circle cx="698" cy="262" r="3.5" fill="#c084fc"/><text x="708" y="266" font-family="Segoe UI,system-ui,sans-serif" font-size="11.5" font-weight="700" fill="#e9d5ff">Bypassed · Live</text>
+  <line x1="684" y1="292" x2="818" y2="292" stroke="#231a38"/>
+  <text x="684" y="316" font-family="Segoe UI,system-ui,sans-serif" font-size="10" font-weight="700" fill="#7c758c" letter-spacing="1">LOBBY STATUS</text>
+  <text x="684" y="338" font-family="Segoe UI,system-ui,sans-serif" font-size="13" font-weight="600" fill="#e2e8f0">5 / 5 Players Found</text>
+  <text x="684" y="357" font-family="Segoe UI,system-ui,sans-serif" font-size="11" fill="#847d96">Ranks &amp; history synced</text>
+
+  <g font-family="Segoe UI,system-ui,sans-serif">
+    <text x="852" y="124" font-size="10" font-weight="700" fill="#7c758c" letter-spacing="1">PLAYER</text>
+    <text x="1032" y="124" font-size="10" font-weight="700" fill="#7c758c" letter-spacing="1">RANK</text>
+    <text x="1136" y="124" font-size="10" font-weight="700" fill="#7c758c" letter-spacing="1">TODAY</text>
+    <rect x="850" y="136" width="348" height="48" rx="8" fill="#1a1329" stroke="#7e22ce" stroke-width="1.2"/>
+    <circle cx="874" cy="160" r="13" fill="#2c1d4a" stroke="#9333ea"/><text x="874" y="164" text-anchor="middle" font-size="11" font-weight="700" fill="#e9d5ff">Y</text>
+    <text x="896" y="156" font-size="12.5" font-weight="700" fill="#fff">sy2x#zzz</text><text x="896" y="172" font-size="10.5" font-weight="600" fill="#a855f7">You · Selecting</text>
+    <circle cx="1040" cy="160" r="5" fill="#34d399"/><text x="1051" y="164" font-size="11.5" font-weight="600" fill="#e2e8f0">Ascendant 2</text><text x="1138" y="164" font-size="11.5" font-weight="700" fill="#4ade80">4W - 1L</text>
+    <rect x="850" y="192" width="348" height="48" rx="8" fill="#141020" stroke="#251c3b"/><circle cx="874" cy="216" r="13" fill="#211a33"/>
+    <text x="874" y="220" text-anchor="middle" font-size="11" font-weight="700" fill="#94a3b8">K</text><text x="896" y="212" font-size="12.5" font-weight="700" fill="#f1f5f9">Kuro#042</text>
+    <rect x="958" y="200" width="58" height="15" rx="4" fill="#261842"/><text x="987" y="211" text-anchor="middle" font-size="8.5" font-weight="700" fill="#c084fc">REVEALED</text>
+    <text x="896" y="228" font-size="10.5" fill="#847d96">Jett · Hidden Name</text><circle cx="1040" cy="216" r="5" fill="#f43f5e"/><text x="1051" y="220" font-size="11.5" font-weight="600" fill="#e2e8f0">Immortal 1</text><text x="1138" y="220" font-size="11.5" font-weight="700" fill="#4ade80">3W - 0L</text>
+    <rect x="850" y="248" width="348" height="48" rx="8" fill="#141020" stroke="#251c3b"/><circle cx="874" cy="272" r="13" fill="#211a33"/>
+    <text x="874" y="276" text-anchor="middle" font-size="11" font-weight="700" fill="#94a3b8">N</text><text x="896" y="268" font-size="12.5" font-weight="700" fill="#f1f5f9">Nova#BR1</text>
+    <rect x="962" y="256" width="58" height="15" rx="4" fill="#261842"/><text x="991" y="267" text-anchor="middle" font-size="8.5" font-weight="700" fill="#c084fc">REVEALED</text>
+    <text x="896" y="284" font-size="10.5" fill="#847d96">Breach · Hidden Name</text><circle cx="1040" cy="272" r="5" fill="#34d399"/><text x="1051" y="276" font-size="11.5" font-weight="600" fill="#e2e8f0">Ascendant 1</text><text x="1138" y="276" font-size="11.5" font-weight="700" fill="#94a3b8">2W - 2L</text>
+    <rect x="850" y="308" width="348" height="68" rx="8" fill="#120f1c" stroke="#211936"/>
+    <text x="868" y="330" font-size="11" font-weight="700" fill="#cbd5e1">Enemy team</text><rect x="942" y="317" width="60" height="17" rx="4" fill="#131c2e" stroke="#223457"/>
+    <text x="972" y="329" text-anchor="middle" font-size="9" font-weight="700" fill="#60a5fa">DEFENSE</text><text x="1182" y="330" text-anchor="end" font-size="10.5" fill="#7c758c">5 players</text>
+    <text x="868" y="356" font-size="11.5" fill="#847d96">Hidden nicks &amp; ranks load automatically on match start...</text>
+  </g>
+</svg>

@@ -1,4 +1,4 @@
-![Lunar — VALORANT tracker](assets/lunar-banner.png)
+![Lunar — VALORANT tracker](assets/lunar-banner.svg)
 
 # Lunar
 
