@@ -208,6 +208,12 @@ sealed class DesktopIntegration:IDisposable {
     readonly DiscordToggle discordButton;
     readonly ToolStripMenuItem discordMenu;
     readonly ToolStripLabel trayPhase;
+    readonly ToolStripMenuItem installUpdate;
+    readonly Timer updateTimer=new Timer{Interval=10000};
+    readonly System.Threading.CancellationTokenSource updateCancellation=new System.Threading.CancellationTokenSource();
+    DateTime nextUpdateCheck=DateTime.UtcNow;
+    string pendingUpdate;
+    bool checkingUpdate;
     string displayedDiscordStatus="",saveError="";
     readonly DiscordPresence discord=new DiscordPresence();
     string pendingMatch="",dismissedMatch="";
@@ -250,7 +256,9 @@ sealed class DesktopIntegration:IDisposable {
         menu.Items.Add(new ToolStripSeparator());
         discordMenu=TrayAction("Discord Presence",ToggleDiscord);
         TrayAction("Open Lunar",delegate{OpenMain();});
-        TrayAction("Exit Lunar",delegate{exit=true;main.Close();}).ForeColor=Color.FromArgb(236,153,172);
+        installUpdate=TrayAction("Install update",delegate{ExitWithUpdate(true);});
+        installUpdate.Available=false;
+        TrayAction("Exit Lunar",delegate{ExitWithUpdate(false);}).ForeColor=Color.FromArgb(236,153,172);
         UpdateDiscordButton();
         tray=new NotifyIcon{Icon=main.Icon,Text="Lunar",ContextMenuStrip=menu,Visible=true};
         tray.DoubleClick+=delegate{OpenMain();};
@@ -258,6 +266,42 @@ sealed class DesktopIntegration:IDisposable {
         main.HandleDestroyed+=delegate{UnregisterShortcut();};
         foreground.Tick+=delegate{SyncOverlay();UpdateDiscordButton();};
         foreground.Start();
+        updateTimer.Tick+=delegate{CheckUpdates();};
+        updateTimer.Start();
+    }
+    async void CheckUpdates(){
+        if(pendingUpdate!=null){
+            if((!main.Visible||main.WindowState==FormWindowState.Minimized)&&!shortcutActive&&
+                !Process.GetProcessesByName("VALORANT-Win64-Shipping").Any())ExitWithUpdate(true);
+            return;
+        }
+        if(checkingUpdate||DateTime.UtcNow<nextUpdateCheck)return;
+        checkingUpdate=true;
+        nextUpdateCheck=DateTime.UtcNow.AddHours(3);
+        var token=updateCancellation.Token;
+        try{
+            string folder=await LunarUpdates.Prepare(token);
+            if(!token.IsCancellationRequested&&folder!=null){
+                pendingUpdate=folder;
+                installUpdate.Available=true;
+            }
+        }catch(Exception){}
+        finally{checkingUpdate=false;}
+    }
+    void ExitWithUpdate(bool restart){
+        if(pendingUpdate!=null){
+            try{LunarUpdates.Start(pendingUpdate,restart);}
+            catch(Exception){
+                if(restart){
+                    pendingUpdate=null;
+                    installUpdate.Available=false;
+                    nextUpdateCheck=DateTime.UtcNow.AddMinutes(5);
+                    return;
+                }
+            }
+        }else if(restart)return;
+        exit=true;
+        main.Close();
     }
     ToolStripMenuItem TrayAction(string label,EventHandler handler){
         var item=new ToolStripMenuItem(label,null,handler){
@@ -446,6 +490,8 @@ sealed class DesktopIntegration:IDisposable {
         discordButton.AccessibleDescription=summary+". Click to "+(enabled?"turn off":"turn on")+" Discord Presence.";
     }
     public void Dispose(){
+        updateTimer.Stop();updateTimer.Dispose();
+        updateCancellation.Cancel();updateCancellation.Dispose();
         foreground.Stop();foreground.Dispose();
         UnregisterShortcut();
         EndInteraction();

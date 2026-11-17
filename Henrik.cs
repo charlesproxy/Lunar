@@ -8,10 +8,14 @@ using System.Security.Cryptography;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Drawing;
+using System.Windows.Forms;
 namespace Lunar {
 static class HenrikKey {
     static readonly string PathOnDisk=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),"Lunar","henrik.key");
-    public static readonly string Value=Load(PathOnDisk);
+    public static string Value {get;private set;}
+    static HenrikKey(){Value=Load(PathOnDisk);}
+    public static bool IsConfigured {get{return !String.IsNullOrWhiteSpace(Value);}}
 
     internal static string Load(string path){
         try{
@@ -24,6 +28,41 @@ static class HenrikKey {
         catch(CryptographicException){}
 
         return (Environment.GetEnvironmentVariable("LUNAR_HENRIK_KEY")??"").Trim();
+    }
+
+    public static bool Prompt(IWin32Window owner){
+        using(var form=new Form())using(var input=new TextBox())using(var save=new Button())using(var cancel=new Button()){
+            form.Text="Enable Tracker statistics";form.ClientSize=new Size(440,190);form.FormBorderStyle=FormBorderStyle.FixedDialog;
+            form.MaximizeBox=false;form.MinimizeBox=false;form.ShowInTaskbar=false;form.StartPosition=FormStartPosition.CenterParent;
+            form.BackColor=Color.FromArgb(19,16,29);form.ForeColor=Color.FromArgb(235,232,242);form.Font=new Font("Segoe UI",9);
+            var heading=new Label{Text="Connect HenrikDev",Left=22,Top=18,Width=390,Height=29,Font=new Font("Segoe UI",14,FontStyle.Bold),ForeColor=Color.FromArgb(229,216,255)};
+            var details=new Label{Text="Paste your API key once. Lunar encrypts it for this Windows account and keeps it on this PC.",Left=23,Top=54,Width=392,Height=38,ForeColor=Color.FromArgb(160,157,171)};
+            input.Left=23;input.Top=101;input.Width=392;input.Height=27;input.UseSystemPasswordChar=true;input.BorderStyle=BorderStyle.FixedSingle;
+            input.BackColor=Color.FromArgb(13,11,19);input.ForeColor=Color.FromArgb(245,242,250);input.Font=new Font("Segoe UI",10);
+            save.Text="Save key";save.Left=302;save.Top=145;save.Width=112;save.Height=30;save.DialogResult=DialogResult.OK;
+            save.FlatStyle=FlatStyle.Flat;save.FlatAppearance.BorderSize=0;save.BackColor=Color.FromArgb(119,75,183);save.ForeColor=Color.White;
+            cancel.Text="Later";cancel.Left=213;cancel.Top=145;cancel.Width=78;cancel.Height=30;cancel.DialogResult=DialogResult.Cancel;
+            cancel.FlatStyle=FlatStyle.Flat;cancel.FlatAppearance.BorderSize=0;cancel.BackColor=Color.FromArgb(43,35,56);cancel.ForeColor=Color.FromArgb(210,205,221);
+            form.Controls.AddRange(new Control[]{heading,details,input,save,cancel});form.AcceptButton=save;form.CancelButton=cancel;
+            if(form.ShowDialog(owner)!=DialogResult.OK)return false;
+            var key=input.Text.Trim();
+            if(key.Length<8){MessageBox.Show(owner,"Enter a valid HenrikDev API key.","API key required",MessageBoxButtons.OK,MessageBoxIcon.Information);return false;}
+            try{Save(key);return true;}
+            catch(Exception error){MessageBox.Show(owner,"Lunar could not save the key securely. "+error.Message,"Could not save API key",MessageBoxButtons.OK,MessageBoxIcon.Error);return false;}
+        }
+    }
+
+    static void Save(string value){
+        var directory=Path.GetDirectoryName(PathOnDisk);
+        Directory.CreateDirectory(directory);
+        byte[] encrypted=ProtectedData.Protect(Encoding.UTF8.GetBytes(value),null,DataProtectionScope.CurrentUser);
+        string temporary=PathOnDisk+"."+Guid.NewGuid().ToString("N")+".tmp";
+        try{
+            File.WriteAllBytes(temporary,encrypted);
+            if(File.Exists(PathOnDisk))File.Replace(temporary,PathOnDisk,null);
+            else File.Move(temporary,PathOnDisk);
+            Value=value;
+        }finally{if(File.Exists(temporary))File.Delete(temporary);}
     }
 }
 sealed class HenrikRequestException:Exception {
@@ -66,7 +105,7 @@ static class HenrikClient {
     request.ReadWriteTimeout=15000;
     request.AllowAutoRedirect=false;
     request.AutomaticDecompression=DecompressionMethods.GZip|DecompressionMethods.Deflate;
-    request.UserAgent="Lunar/1.58";
+    request.UserAgent="Lunar/1.60";
     request.ServicePoint.ConnectionLimit=24;
     request.Headers[HttpRequestHeader.Authorization]=HenrikKey.Value;
     using(var timeout=CancellationTokenSource.CreateLinkedTokenSource(cancellation)){

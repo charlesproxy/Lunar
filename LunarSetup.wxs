@@ -59,7 +59,5 @@
       <Property Id="ARPNOMODIFY" Value="1" />
     </UI>
     <UIRef Id="WixUI_Common" />
-    <WixVariable Id="WixUIBannerBmp" Value="installer\wizard-banner.bmp" />
-    <WixVariable Id="WixUIDialogBmp" Value="installer\wizard-dialog.bmp" />
   </Product>
 </Wix>

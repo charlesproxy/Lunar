@@ -408,6 +408,10 @@ class SearchView:UserControl {
             if(e.Error!=null){
                 if(RetryMatchesInput()){
                     var limit=e.Error as HenrikRequestException;
+                    if(limit!=null&&(limit.Status==401||limit.Status==403)&&HenrikKey.Prompt(FindForm())){
+                        RunSearch(activeQuery);
+                        return;
+                    }
                     if(!retried&&limit!=null&&limit.Status==429){
                         retryAt=limit.RetryAfter;
                         search.Enabled=false;

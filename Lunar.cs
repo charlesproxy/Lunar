@@ -16,13 +16,24 @@ using System.Threading.Tasks;
 
 [assembly: System.Reflection.AssemblyTitle("Lunar")]
 [assembly: System.Reflection.AssemblyProduct("Lunar")]
-[assembly: System.Reflection.AssemblyFileVersion("1.58.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.60.0.0")]
 
 namespace Lunar {
 static class Json {
     public static JavaScriptSerializer Codec { get { return new JavaScriptSerializer { MaxJsonLength = 8388608 }; } }
     public static object Get(object o, string key) { var d=o as Dictionary<string,object>; return d!=null && d.ContainsKey(key)?d[key]:null; }
     public static string S(object o,string key) { return Convert.ToString(Get(o,key)) ?? ""; }
+    public static object GetAnyCase(object o,params string[] keys) {
+        var values=o as Dictionary<string,object>;
+        if(values==null)return null;
+        foreach(var key in keys){
+            object value;
+            if(values.TryGetValue(key,out value))return value;
+            var match=values.FirstOrDefault(pair=>String.Equals(pair.Key,key,StringComparison.OrdinalIgnoreCase));
+            if(match.Key!=null)return match.Value;
+        }
+        return null;
+    }
     public static IEnumerable<object> A(object o) { return (o as object[]) ?? new object[0]; }
     public static bool B(object o,string key) { return Get(o,key) is bool && (bool)Get(o,key); }
 }
@@ -74,7 +85,7 @@ partial class RiotReader {
         var uri=new Uri(url);
         if(isLocal ? uri.Host!="127.0.0.1" : !Regex.IsMatch(uri.Host,@"^((?:pd|shared)\.(na|eu|ap|kr|pbe)|glz-(na|latam|br|eu|ap|kr)-1\.(na|eu|ap|kr|pbe))\.a\.pvp\.net$")) throw new InvalidOperationException();
         var req=(HttpWebRequest)WebRequest.Create(uri);
-        req.UserAgent="Lunar/1.58";req.Method=method; req.Timeout=timeout; req.ReadWriteTimeout=timeout; req.AllowAutoRedirect=false;
+        req.UserAgent="Lunar/1.60";req.Method=method; req.Timeout=timeout; req.ReadWriteTimeout=timeout; req.AllowAutoRedirect=false;
         req.Accept="application/json"; req.AutomaticDecompression=DecompressionMethods.GZip|DecompressionMethods.Deflate;
         if(isLocal) {
             req.Proxy=null;
@@ -210,7 +221,7 @@ partial class RiotReader {
         if(missing.Length>0) {
             try {
                 var result=Request("https://pd."+shard+".a.pvp.net/name-service/v2/players","PUT",missing,false,false);
-                remoteStatus="OK; registros="+Json.A(result).Count();
+                remoteStatus="OK; records="+Json.A(result).Count();
                 foreach(var n in Json.A(result)) {
                     string subject=Json.S(n,"Subject"),name=Json.S(n,"GameName"),tag=Json.S(n,"TagLine");
                     if(missing.Contains(subject) && name!="") names[subject]=name+(tag==""?"":"#"+tag);
@@ -225,14 +236,14 @@ partial class RiotReader {
                 var result=Request(origin+"/player-account/lookup/v2/namesets-for-puuids","POST",new Dictionary<string,object>{{"puuids",unresolved}},true,false);
                 var additional=LocalNames(result,unresolved);
                 foreach(var entry in additional) names[entry.Key]=entry.Value;
-                localStatus="OK; registros="+Json.A(Json.Get(result,"namesets")).Count()+"; nomes="+additional.Count;
+                localStatus="OK; records="+Json.A(Json.Get(result,"namesets")).Count()+"; names="+additional.Count;
             } catch(ApiFailure e) { localStatus="HTTP "+e.Code; if(e.Code==429) snap.Delay=60000; }
               catch(WebException) { localStatus="connection failed"; }
               catch(ArgumentException) { localStatus="invalid response"; }
         } else if(unresolved.Length>0) localStatus="rate limit reached";
         int rawCount=pregame?Json.A(Json.Get(Json.Get(data,"AllyTeam"),"Players")).Count()+Json.A(Json.Get(Json.Get(data,"EnemyTeam"),"Players")).Count():Json.A(Json.Get(data,"Players")).Count();
         int resolvedCount=all.Count(p=>names.ContainsKey(p.Id));
-        snap.Diagnostics="Lunar 1.58\r\nPhase: "+snap.Status+"\r\nPlayers in response: "+rawCount+"\r\nAllies: "+snap.Allies.Count+"\r\nOpponents: "+snap.Enemies.Count+"\r\nResolved names: "+resolvedCount+"/"+all.Count+"\r\nRemote service: "+remoteStatus+"\r\nLocal Riot Client: "+localStatus+"\r\nDiagnostics exclude tokens, IDs, names and raw responses.";
+        snap.Diagnostics="Lunar 1.60\r\nPhase: "+snap.Status+"\r\nPlayers in response: "+rawCount+"\r\nAllies: "+snap.Allies.Count+"\r\nOpponents: "+snap.Enemies.Count+"\r\nResolved names: "+resolvedCount+"/"+all.Count+"\r\nRemote service: "+remoteStatus+"\r\nLocal Riot Client: "+localStatus+"\r\nDiagnostics exclude tokens, IDs, names and raw responses.";
         ApplyNames(all,names);
         snap.Self=all.FirstOrDefault(p=>p.Id==self)??GetSelfPlayer();
         snap.Detail=(pregame?"Agent select":"Match in progress")+" · allies: "+snap.Allies.Count+" · opponents: "+snap.Enemies.Count+" · names: "+resolvedCount+"/"+all.Count;
@@ -292,9 +303,12 @@ partial class RiotReader {
             string subject=Json.S(p,"Subject"); Guid id;
             if(!Guid.TryParse(subject,out id) || !seen.Add(subject) || Json.B(p,"IsCoach")) continue;
             string selection=Json.S(p,"CharacterSelectionState");
-            var identity=Json.Get(p,"PlayerIdentity");
+            var identity=Json.GetAnyCase(p,"PlayerIdentity","playerIdentity","player_identity")??p;
             int level;
-            if(Json.B(identity,"HideAccountLevel")||!Int32.TryParse(Json.S(identity,"AccountLevel"),out level))level=0;
+            var hidden=Json.GetAnyCase(identity,"HideAccountLevel","hideAccountLevel","hide_account_level");
+            bool hide=hidden is bool&&(bool)hidden;
+            var rawLevel=Json.GetAnyCase(identity,"AccountLevel","accountLevel","account_level","Level","level");
+            if(hide||!Int32.TryParse(Convert.ToString(rawLevel,System.Globalization.CultureInfo.InvariantCulture),System.Globalization.NumberStyles.Integer,System.Globalization.CultureInfo.InvariantCulture,out level)||level<1||level>10000)level=0;
             result.Add(new Player {Id=subject,Name="Name unavailable",AgentId=Json.S(p,"CharacterID"),PartyId=ReadPartyId(p),CardId=Json.S(identity,"PlayerCardID"),AccountLevel=level,Team=team==""?Json.S(p,"TeamID"):team,
                 State=subject==self?"YOU":selection=="locked"?"LOCKED IN":selection=="selected"?"SELECTING":"PLAYER"});
         } return result;
@@ -485,7 +499,7 @@ class Window:LunarForm,IMessageFilter {
         storeNav=Navigation("Daily Store",LunarGlyph.Shop,299);storeNav.Click+=delegate{ShowStore();};sidebar.Controls.Add(storeNav);
         crosshairNav=Navigation("Crosshair",LunarGlyph.Crosshair,346);crosshairNav.Click+=delegate{ShowCrosshair();};sidebar.Controls.Add(crosshairNav);
         var bottom=new Panel{Dock=DockStyle.Bottom,Height=110};
-        bottom.Controls.Add(new Label{Text="LUNAR   /   1.58",Dock=DockStyle.Bottom,Height=26,ForeColor=Palette.Muted,Font=new Font("Segoe UI",8)});sidebar.Controls.Add(bottom);
+        bottom.Controls.Add(new Label{Text="LUNAR   /   1.60",Dock=DockStyle.Bottom,Height=26,ForeColor=Palette.Muted,Font=new Font("Segoe UI",8)});sidebar.Controls.Add(bottom);
         surface=new TrackerSurface{Dock=DockStyle.Fill,Profiles=liveProfiles};surface.PlayerClicked+=OpenHistory;
         home=new HistoryView{Dock=DockStyle.Fill,HomeMode=true};
         home.OpenPlayer+=OpenHistory;
@@ -523,7 +537,7 @@ class Window:LunarForm,IMessageFilter {
             if(changed||fetchedNames>visibleNames)ShowSnapshot(roster);
         };
         worker.RunWorkerCompleted+=delegate(object sender,RunWorkerCompletedEventArgs e){busy=false;if(IsDisposed||Disposing)return;var s=e.Error==null?(Snapshot)e.Result:new Snapshot{Status="Temporary connection issue",Delay=15000};ShowSnapshot(s);timer.Interval=s.Delay;timer.Start();};
-        timer.Interval=5000;timer.Tick+=delegate{RefreshData();};if(!preview)Shown+=delegate{RefreshData();};FormClosed+=delegate{if(desktop!=null)desktop.Dispose();timer.Stop();timer.Dispose();statsTimer.Stop();statsTimer.Dispose();liveBatchTimer.Stop();liveBatchTimer.Dispose();statsCancel.Cancel();};
+        timer.Interval=5000;timer.Tick+=delegate{RefreshData();};if(!preview)Shown+=delegate{if(!HenrikKey.IsConfigured)HenrikKey.Prompt(this);RefreshData();};FormClosed+=delegate{if(desktop!=null)desktop.Dispose();timer.Stop();timer.Dispose();statsTimer.Stop();statsTimer.Dispose();liveBatchTimer.Stop();liveBatchTimer.Dispose();statsCancel.Cancel();};
     }
     protected override void OnHandleCreated(EventArgs e){
         base.OnHandleCreated(e);
@@ -871,6 +885,7 @@ class Window:LunarForm,IMessageFilter {
 static class Program {
     [STAThread] static int Main(string[] args) {
         ServicePointManager.SecurityProtocol=SecurityProtocolType.Tls12;
+        if(args.Length==1&&args[0]=="--apply-update")return LunarUpdates.Apply();
         if(args.Contains("--self-test")) {SearchChecks.Run();Tests.Run();HistoryChecks.Run();return ProfileChecks.Run();}
         if(args.Contains("--probe")) {var s=new RiotReader().Poll();Console.WriteLine(s.Status+" | "+s.Detail);return 0;}
         Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
@@ -896,6 +911,15 @@ static class Tests {
         Check(s.Enemies[0].Name=="Teste#BR1","missing privacy flag does not suppress returned name");
         s=RiotReader.Parse(parse("{\"Players\":[{\"Subject\":\""+me+"\",\"TeamID\":\"Red\"},{\"Subject\":\""+other+"\",\"TeamID\":\"Blue\",\"PlayerIdentity\":{\"Incognito\":true}}]}"),me,false);
         Check(s.Allies.Count==1&&s.Enemies.Count==1,"ingame grouping");
+        s=RiotReader.Parse(parse("{\"AllyTeam\":{\"TeamID\":\"Blue\",\"Players\":[{\"Subject\":\""+me+"\",\"PlayerIdentity\":{\"AccountLevel\":276}}]}}"),me,true);
+        Check(s.Allies[0].AccountLevel==276,"account level parsed from the Riot identity");
+        s=RiotReader.Parse(parse("{\"AllyTeam\":{\"TeamID\":\"Blue\",\"Players\":[{\"Subject\":\""+me+"\",\"player_identity\":{\"account_level\":\"143\"}}]}}"),me,true);
+        Check(s.Allies[0].AccountLevel==143,"account level parsed from alternate field casing");
+        s=RiotReader.Parse(parse("{\"AllyTeam\":{\"TeamID\":\"Blue\",\"Players\":[{\"Subject\":\""+me+"\",\"PlayerIdentity\":{\"HideAccountLevel\":true,\"AccountLevel\":276}}]}}"),me,true);
+        Check(s.Allies[0].AccountLevel==0,"hidden account level remains private");
+        s=RiotReader.Parse(parse("{\"Players\":[{\"Subject\":\""+me+"\",\"TeamID\":\"Red\",\"playerIdentity\":{\"Level\":52}}]}"),me,false);
+        Check(s.Allies[0].AccountLevel==52,"account level parsed from lowercase live response");
+        s=RiotReader.Parse(parse("{\"Players\":[{\"Subject\":\""+me+"\",\"TeamID\":\"Red\"},{\"Subject\":\""+other+"\",\"TeamID\":\"Blue\",\"PlayerIdentity\":{\"Incognito\":true}}]}"),me,false);
         RiotReader.ApplyNames(s.Enemies,new Dictionary<string,string>{{other,"Teste#BR1"}});
         Check(s.Enemies[0].Name=="Teste#BR1","Incognito does not suppress returned name");
         RiotReader.ApplyNames(s.Enemies,new Dictionary<string,string>());
@@ -906,7 +930,7 @@ static class Tests {
         Check(RiotReader.LocalNames(parse("{\"namesets\":[{\"puuid\":\""+other+"\",\"alias\":{\"gameName\":\"Local\"}}]}"),new[]{me}).Count==0,"unrequested identities discarded");
         Check(RiotReader.LocalNames(parse("{\"namesets\":[{\"puuid\":\""+other+"\",\"error\":\"unavailable\",\"alias\":{\"gameName\":\"Local\"}}]}"),new[]{other}).Count==0,"local entry error not cached as a name");
         Check(RiotReader.LocalNames(parse("{\"namesets\":[{\"puuid\":\""+other+"\",\"alias\":null}]}"),new[]{other}).Count==0,"null local alias tolerated");
-        Console.WriteLine("14 checks passed.");return 0;
+        Console.WriteLine("18 checks passed.");return 0;
     }
 }
 }
