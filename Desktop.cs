@@ -284,6 +284,7 @@ sealed class DesktopIntegration:IDisposable {
             if(!token.IsCancellationRequested&&folder!=null){
                 pendingUpdate=folder;
                 installUpdate.Available=true;
+                main.ShowUpdateReady(delegate{ExitWithUpdate(true);});
             }
         }catch(Exception){}
         finally{checkingUpdate=false;}
@@ -295,6 +296,7 @@ sealed class DesktopIntegration:IDisposable {
                 if(restart){
                     pendingUpdate=null;
                     installUpdate.Available=false;
+                    main.HideUpdateReady();
                     nextUpdateCheck=DateTime.UtcNow.AddMinutes(5);
                     return;
                 }

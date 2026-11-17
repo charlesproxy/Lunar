@@ -8,7 +8,7 @@ A Windows companion for VALORANT match history, live match stats, friends, the d
 
 Download **Lunar-Setup** from [Releases](https://github.com/charlesproxy/Lunar/releases) and run it. Requires .NET Framework 4.8 or later.
 
-On first launch, enter a HenrikDev API key to enable Tracker and live player statistics. Lunar encrypts the key for the current Windows account and stores it locally. The key is never included in the installer or source repository. Live Match also requires VALORANT to be running. Press **Alt + T** to toggle the overlay in windowed fullscreen.
+The official MSI is preconfigured for Tracker and live player statistics, so no key entry is needed. All MSI users share the provider key and its rate limit. Source builds do not include a key: set `LUNAR_HENRIK_KEY` or enter a key once in Lunar, where it is encrypted for the current Windows account. Live Match also requires VALORANT to be running. Press **Alt + T** to toggle the overlay in windowed fullscreen.
 
 ## Build from source
 

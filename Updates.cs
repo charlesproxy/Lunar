@@ -18,7 +18,7 @@ sealed class UpdatePackage {
 }
 
 static class LunarUpdates {
-    const string Feed="https://github.com/charlesproxy/Lunar-Updates/releases";
+    const string Feed="https://github.com/charlesproxy/Lunar/releases";
     const int MaxManifest=32*1024;
     const int MaxPackage=64*1024*1024;
     static readonly string Root=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Lunar","updates");

@@ -4,7 +4,7 @@ $root=$PSScriptRoot
 $source=Join-Path $root 'LunarSetup.wxs'
 Push-Location $root
 try{
-  & (Join-Path $root 'build.ps1')
+  & (Join-Path $root 'build.ps1') -EmbedHenrikKey
   $app=Get-ChildItem -LiteralPath $root -File -Filter 'Lunar-*.exe' | Sort-Object { [version]$_.VersionInfo.FileVersion } -Descending | Select-Object -First 1
   $version=[version]$app.VersionInfo.FileVersion
   $versionString="$($version.Major).$($version.Minor).$($version.Build)"
@@ -24,7 +24,7 @@ try{
   <Var name="HidePrivateApi" value="true" />
   <Var name="RenameProperties" value="false" />
   <Var name="RenameEvents" value="false" />
-  <Var name="HideStrings" value="false" />
+  <Var name="HideStrings" value="true" />
   <Module file="$module" />
 </Obfuscator>
 "@ | Set-Content -LiteralPath $config -Encoding UTF8

@@ -14,7 +14,10 @@ namespace Lunar {
 static class HenrikKey {
     static readonly string PathOnDisk=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),"Lunar","henrik.key");
     public static string Value {get;private set;}
-    static HenrikKey(){Value=Load(PathOnDisk);}
+    static HenrikKey(){
+        Value=Load(PathOnDisk);
+        if(String.IsNullOrWhiteSpace(Value))Value=HenrikKeyBundle.Read();
+    }
     public static bool IsConfigured {get{return !String.IsNullOrWhiteSpace(Value);}}
 
     internal static string Load(string path){

@@ -474,6 +474,8 @@ class Window:LunarForm,IMessageFilter {
     KeyValuePair<Control,NavButton> activePage;
     bool isPreview;DateTime statsHold=DateTime.MinValue;
     TrackerSurface surface;bool busy;
+    Panel updateNotice;
+    Action restartForUpdate;
     string diagnostics="Waiting for data.";
     readonly Timer timer=new Timer();readonly BackgroundWorker worker=new BackgroundWorker();readonly RiotReader reader=new RiotReader();
     public Window(bool preview=false){
@@ -518,6 +520,8 @@ class Window:LunarForm,IMessageFilter {
         content.Controls.AddRange(pages);
         Controls.Add(content);
         Controls.Add(sidebar);
+        updateNotice=BuildUpdateNotice();
+        Controls.Add(updateNotice);
         SwitchPage(true);
         var discord=new DiscordToggle{Checked=true,Location=new Point(0,36),Size=new Size(162,37)};
         discord.Hint.SetBounds(0,1,162,30);
@@ -539,6 +543,30 @@ class Window:LunarForm,IMessageFilter {
         worker.RunWorkerCompleted+=delegate(object sender,RunWorkerCompletedEventArgs e){busy=false;if(IsDisposed||Disposing)return;var s=e.Error==null?(Snapshot)e.Result:new Snapshot{Status="Temporary connection issue",Delay=15000};ShowSnapshot(s);timer.Interval=s.Delay;timer.Start();};
         timer.Interval=5000;timer.Tick+=delegate{RefreshData();};if(!preview)Shown+=delegate{if(!HenrikKey.IsConfigured)HenrikKey.Prompt(this);RefreshData();};FormClosed+=delegate{if(desktop!=null)desktop.Dispose();timer.Stop();timer.Dispose();statsTimer.Stop();statsTimer.Dispose();liveBatchTimer.Stop();liveBatchTimer.Dispose();statsCancel.Cancel();};
     }
+    Panel BuildUpdateNotice(){
+        var panel=new Panel{Size=new Size(326,76),Anchor=AnchorStyles.Right|AnchorStyles.Bottom,
+            BackColor=Color.FromArgb(24,20,33),Visible=false,TabStop=false};
+        panel.Location=new Point(ClientSize.Width-panel.Width-18,ClientSize.Height-panel.Height-18);
+        panel.Paint+=delegate(object sender,PaintEventArgs e){using(var pen=new Pen(Color.FromArgb(62,51,78)))e.Graphics.DrawRectangle(pen,0,0,panel.Width-1,panel.Height-1);};
+        panel.Controls.Add(new Label{Text="Update ready",Location=new Point(16,13),Size=new Size(160,22),
+            ForeColor=Palette.Text,Font=new Font("Segoe UI",10,FontStyle.Bold)});
+        panel.Controls.Add(new Label{Text="Restart Lunar to install it",Location=new Point(16,38),Size=new Size(185,19),
+            ForeColor=Palette.Muted,Font=new Font("Segoe UI",8)});
+        var restart=new Button{Text="Restart",Location=new Point(229,20),Size=new Size(82,36),
+            FlatStyle=FlatStyle.Flat,BackColor=Palette.Accent,ForeColor=Color.White,Font=new Font("Segoe UI",9,FontStyle.Bold),Cursor=Cursors.Hand};
+        restart.FlatAppearance.BorderSize=0;
+        restart.Click+=delegate{if(restartForUpdate!=null)restartForUpdate();};
+        panel.Controls.Add(restart);
+        return panel;
+    }
+    internal void ShowUpdateReady(Action restart){
+        restartForUpdate=restart;
+        if(updateNotice==null||IsDisposed)return;
+        updateNotice.Location=new Point(Math.Max(12,ClientSize.Width-updateNotice.Width-18),Math.Max(12,ClientSize.Height-updateNotice.Height-18));
+        updateNotice.Visible=true;
+        updateNotice.BringToFront();
+    }
+    internal void HideUpdateReady(){if(updateNotice!=null)updateNotice.Visible=false;restartForUpdate=null;}
     protected override void OnHandleCreated(EventArgs e){
         base.OnHandleCreated(e);
         Application.AddMessageFilter(this);
