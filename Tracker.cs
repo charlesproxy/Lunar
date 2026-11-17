@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -8,7 +8,7 @@ using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using System.Threading.Tasks;
 namespace Lunar {
-enum LunarGlyph { Home, Live, Search, Shop, Friends, Crosshair }
+enum LunarGlyph { Home, Live, Search, Shop, Friends, Crosshair, Settings }
 static class LunarIcons {
     public static void Draw(Graphics graphics,LunarGlyph icon,Point center,Color color,int size=20){
         var state=graphics.Save();
@@ -32,6 +32,12 @@ static class LunarIcons {
                     graphics.DrawLines(pen,new[]{new Point(2,4),new Point(5,4),new Point(7,15),new Point(18,15),new Point(21,7),new Point(6,7)});
                     graphics.DrawEllipse(pen,7,18,2,2);
                     graphics.DrawEllipse(pen,16,18,2,2);
+                    break;
+                case LunarGlyph.Settings:
+                    graphics.DrawEllipse(pen,8,8,8,8);
+                    graphics.DrawEllipse(pen,3,3,18,18);
+                    graphics.DrawLine(pen,12,1,12,5);graphics.DrawLine(pen,12,19,12,23);
+                    graphics.DrawLine(pen,1,12,5,12);graphics.DrawLine(pen,19,12,23,12);
                     break;
                 case LunarGlyph.Crosshair:
                     graphics.DrawEllipse(pen,5,5,14,14);
@@ -399,7 +405,7 @@ class SearchView:UserControl {
         RefreshRecent();
         worker.DoWork+=delegate(object sender,DoWorkEventArgs e){
             var searchRequest=(Tuple<string,string>)e.Argument;
-            e.Result=HenrikClient.SearchAsync(searchRequest.Item1,searchRequest.Item2).GetAwaiter().GetResult();
+            e.Result=RiotStatsClient.SearchAsync(searchRequest.Item1,searchRequest.Item2).GetAwaiter().GetResult();
         };
         worker.RunWorkerCompleted+=delegate(object sender,RunWorkerCompletedEventArgs e){
             if(IsDisposed||Disposing)return;
@@ -407,11 +413,7 @@ class SearchView:UserControl {
             search.Text="Search";
             if(e.Error!=null){
                 if(RetryMatchesInput()){
-                    var limit=e.Error as HenrikRequestException;
-                    if(limit!=null&&(limit.Status==401||limit.Status==403)&&HenrikKey.Prompt(FindForm())){
-                        RunSearch(activeQuery);
-                        return;
-                    }
+                    var limit=e.Error as RiotStatsException;
                     if(!retried&&limit!=null&&limit.Status==429){
                         retryAt=limit.RetryAfter;
                         search.Enabled=false;
@@ -429,7 +431,7 @@ class SearchView:UserControl {
         };
         retryTimer.Tick+=delegate{
             if(retryAt==DateTime.MinValue){retryTimer.Stop();return;}
-            retryAt=retryAt>HenrikClient.RemoteRetryAt?retryAt:HenrikClient.RemoteRetryAt;
+            retryAt=retryAt>RiotStatsClient.RemoteRetryAt?retryAt:RiotStatsClient.RemoteRetryAt;
             if(!RetryMatchesInput()){CancelRetry();return;}
             if(DateTime.UtcNow<retryAt){ShowRetry();return;}
             retryAt=DateTime.MinValue;
@@ -440,7 +442,7 @@ class SearchView:UserControl {
         Disposed+=delegate{retryTimer.Dispose();};
     }
     bool RetryMatchesInput(){return Visible&&String.Equals(input.Text.Trim(),activeQuery,StringComparison.OrdinalIgnoreCase);}
-    void ShowRetry(){SetFeedback("HenrikDev rate limit reached. Retrying in "+HenrikClient.RetrySeconds(retryAt)+"s…",false);}
+    void ShowRetry(){SetFeedback("Riot rate limit reached. Retrying in "+RiotStatsClient.RetrySeconds(retryAt)+"s…",false);}
     void CancelRetry(){
         if(retryAt==DateTime.MinValue)return;
         retryAt=DateTime.MinValue;
@@ -455,7 +457,7 @@ class SearchView:UserControl {
     void BeginSearch(){
         if(worker.IsBusy||retryAt!=DateTime.MinValue)return;
         string value=input.Text.Trim();
-        if(!HenrikClient.HasRiotId(value)){
+        if(!RiotStatsClient.HasRiotId(value)){
             SetFeedback("Enter the full Riot ID in the Name#TAG format.",true);
             input.Focus();
             return;

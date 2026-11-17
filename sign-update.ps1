@@ -1,15 +1,13 @@
 param(
     [Parameter(Mandatory=$true)][string]$Portable,
-    [Parameter(Mandatory=$true)][string]$Installer,
     [Parameter(Mandatory=$true)][string]$Destination
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Security
 $exe = Get-Item -LiteralPath $Portable
-$msi = Get-Item -LiteralPath $Installer
 $version = [version]$exe.VersionInfo.FileVersion
 $releaseVersion = $version.ToString($(if ($version.Build -eq 0) { 2 } else { 3 }))
-if ($exe.Name -ne "Lunar-$releaseVersion.exe" -or $msi.Name -ne "Lunar-Setup-$releaseVersion.msi") {
+if ($exe.Name -ne "Lunar-$releaseVersion.exe") {
     throw 'Update package filenames must match the Lunar version.'
 }
 $localAppData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
@@ -26,7 +24,7 @@ try {
     function DescribePackage($file) {
         return @{name=$file.Name; size=$file.Length; sha256=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash}
     }
-    $manifest = @{version=$version.ToString(); installer=(DescribePackage $msi)}
+    $manifest = @{version=$version.ToString(); application=(DescribePackage $exe)}
     $payload = [Text.Encoding]::UTF8.GetBytes(($manifest | ConvertTo-Json -Depth 3 -Compress))
     $signature = $rsa.SignData($payload, [Security.Cryptography.CryptoConfig]::MapNameToOID('SHA256'))
     $envelope = @{payload=[Convert]::ToBase64String($payload); signature=[Convert]::ToBase64String($signature)}

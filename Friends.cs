@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.ComponentModel;
 using System.Collections.Generic;
 using System.Drawing;
@@ -31,17 +31,17 @@ static class FriendCardCache {
         try{
             var info=new FileInfo(path);
             if(info.Exists&&info.Length<=40&&info.LastWriteTimeUtc>DateTime.UtcNow.AddDays(-1))
-                return HenrikClient.CardId(File.ReadAllText(path));
+                return RiotStatsClient.CardId(File.ReadAllText(path));
         }catch(IOException){}catch(UnauthorizedAccessException){}
         return "";
     }
     public static void Remember(Guid account,string player,string card){
         string path=CardPath(account,player);
-        if(path!=null&&HenrikClient.CardId(card)!=""&&Get(account,player)!=card)
+        if(path!=null&&RiotStatsClient.CardId(card)!=""&&Get(account,player)!=card)
             Write(path,System.Text.Encoding.ASCII.GetBytes(card));
     }
     public static Bitmap Thumbnail(string card){
-        card=HenrikClient.CardId(card);
+        card=RiotStatsClient.CardId(card);
         if(card=="")return null;
         string path=Path.Combine(Root,"icons",card+".png");
         Bitmap art=null;
@@ -50,7 +50,7 @@ static class FriendCardCache {
             if(info.Exists&&info.Length<=65536)art=DecodeThumbnail(File.ReadAllBytes(path));
         }catch(IOException){}catch(UnauthorizedAccessException){}
         if(art!=null)return art;
-        art=DecodeThumbnail(HenrikClient.LoadCard(card,true));
+        art=DecodeThumbnail(RiotStatsClient.LoadCard(card,true));
         if(art!=null){
             using(var buffer=new MemoryStream()){
                 art.Save(buffer,System.Drawing.Imaging.ImageFormat.Png);
@@ -99,7 +99,7 @@ partial class RiotReader {
             if(!ConnectLocalClient()||ReadChatAccount()!=account)
                 return new FriendsSnapshot{Error="Riot account changed. Checking again…"};
             foreach(var player in players){
-                if(HenrikClient.CardId(player.CardId)=="")player.CardId=FriendCardCache.Get(account,player.Id);
+                if(RiotStatsClient.CardId(player.CardId)=="")player.CardId=FriendCardCache.Get(account,player.Id);
                 else FriendCardCache.Remember(account,player.Id,player.CardId);
             }
             return new FriendsSnapshot{Account=account,Players=players};
@@ -131,9 +131,9 @@ partial class RiotReader {
             string name=Json.S(row,"game_name").Trim(),tag=Json.S(row,"game_tag").Trim().TrimStart('#');
             if(name=="")name=Json.S(row,"gameName").Trim();
             if(tag=="")tag=Json.S(row,"tagLine").Trim().TrimStart('#');
-            string card=HenrikClient.CardId(Json.Get(row,"playerCardId"));
-            if(card=="")card=HenrikClient.CardId(Json.Get(row,"player_card_id"));
-            if(card=="")card=HenrikClient.CardId(Json.Get(row,"card"));
+            string card=RiotStatsClient.CardId(Json.Get(row,"playerCardId"));
+            if(card=="")card=RiotStatsClient.CardId(Json.Get(row,"player_card_id"));
+            if(card=="")card=RiotStatsClient.CardId(Json.Get(row,"card"));
             friends.Add(new Player{Id=id.ToString(),Name=name==""?"Riot friend":name+(tag==""?"":"#"+tag),
                 CardId=card,State="Status unavailable"});
         }
@@ -147,9 +147,9 @@ partial class RiotReader {
             var entries=byId[friend.Id].OrderByDescending(row=>HistoryLogic.N(row,"time")).ToArray();
             var valorant=entries.FirstOrDefault(row=>String.Equals(Json.S(row,"product"),"valorant",StringComparison.OrdinalIgnoreCase));
             var data=RiotPresenceData(valorant);
-            string card=HenrikClient.CardId(Json.Get(data,"playerCardId"));
-            if(card=="")card=HenrikClient.CardId(Json.Get(data,"player_card_id"));
-            if(card=="")card=HenrikClient.CardId(Json.Get(valorant,"playerCardId"));
+            string card=RiotStatsClient.CardId(Json.Get(data,"playerCardId"));
+            if(card=="")card=RiotStatsClient.CardId(Json.Get(data,"player_card_id"));
+            if(card=="")card=RiotStatsClient.CardId(Json.Get(valorant,"playerCardId"));
             if(card!="")friend.CardId=card;
             var available=entries.FirstOrDefault(row=>{
                 string state=Json.S(row,"state").ToLowerInvariant();
@@ -391,7 +391,7 @@ sealed class FriendsView:UserControl {
     }
     void UpdateSelection(){
         if(IsDisposed||Disposing)return;
-        profile.Visible=list.Selected!=null&&HenrikClient.HasRiotId(list.Selected.Name);
+        profile.Visible=list.Selected!=null&&RiotStatsClient.HasRiotId(list.Selected.Name);
         Invalidate();
         LoadFriendIcons();
         LoadSelectedBanner();
@@ -406,7 +406,7 @@ sealed class FriendsView:UserControl {
         if(preview||!Visible||IsDisposed||Disposing)return;
         var player=list.Selected;
         if(player==null)return;
-        string id=HenrikClient.CardId(player.CardId);
+        string id=RiotStatsClient.CardId(player.CardId);
         DateTime retry;
         if(id!=""&&!banners.ContainsKey(id)&&(!bannerRetry.TryGetValue(id,out retry)||retry<=DateTime.UtcNow)
             &&loadingBanners.Count<3&&loadingBanners.Add(id))ReadBanner(id);
@@ -426,29 +426,30 @@ sealed class FriendsView:UserControl {
         Dictionary<string,DateTime> retries,Dictionary<string,CancellationTokenSource> active,DateTime now){
         return new[]{selected}.Concat(visible).Concat(all).FirstOrDefault(player=>{
             DateTime retry;
-            return player!=null&&!active.ContainsKey(player.Id)&&HenrikClient.CardId(player.CardId)==""&&
-                HenrikClient.HasRiotId(player.Name)&&(!retries.TryGetValue(player.Id,out retry)||retry<=now);
+            return player!=null&&!active.ContainsKey(player.Id)&&RiotStatsClient.CardId(player.CardId)==""&&
+                RiotStatsClient.HasRiotId(player.Name)&&(!retries.TryGetValue(player.Id,out retry)||retry<=now);
         });
     }
     async void FindFriendCard(Player player,Guid account){
         var request=new CancellationTokenSource();
         cardLookups.Add(player.Id,request);
         try{
-            var found=await HenrikClient.LookupAsync(player.Name,request.Token,true);
+            var found=await RiotStatsClient.LookupAsync(player.Name,request.Token,true);
             if(request.IsCancellationRequested||IsDisposed||Disposing||account!=cardAccount)return;
-            string id=HenrikClient.CardId(found.CardId);
+            string id=RiotStatsClient.CardId(found.CardId);
+            if(id=="")id=await RiotStatsClient.LookupCardIdAsync(found,request.Token).ConfigureAwait(true);
             if(id==""||!String.Equals(player.Id,found.Id,StringComparison.OrdinalIgnoreCase)){
                 cardRetry[player.Id]=DateTime.UtcNow.AddMinutes(2);
                 return;
             }
             knownCards[player.Id]=id;
             if(snapshot!=null&&snapshot.Account==account)
-                foreach(var entry in snapshot.Players.Where(entry=>entry.Id==player.Id&&HenrikClient.CardId(entry.CardId)==""))
+                foreach(var entry in snapshot.Players.Where(entry=>entry.Id==player.Id&&RiotStatsClient.CardId(entry.CardId)==""))
                     entry.CardId=id;
             LoadFriendIcons();
             await Task.Run(()=>FriendCardCache.Remember(account,player.Id,id));
         }catch(OperationCanceledException){}
-         catch(HenrikRequestException error){
+         catch(RiotStatsException error){
             if(!request.IsCancellationRequested&&!IsDisposed&&account==cardAccount){
                 if(error.Status==429&&error.RetryAfter>cardQueuePausedUntil)cardQueuePausedUntil=error.RetryAfter;
                 else if(error.Status==401||error.Status==403||error.Status==0){
@@ -479,7 +480,7 @@ sealed class FriendsView:UserControl {
     }
     async void ReadBanner(string id){
         try{
-            var picture=await Task.Run(()=>HenrikClient.LoadCard(id));
+            var picture=await Task.Run(()=>RiotStatsClient.LoadCard(id));
             if(IsDisposed||Disposing)return;
             Image art=null;
             if(picture!=null)using(var stream=new MemoryStream(picture))art=TrackArt.Decode(stream);
@@ -499,7 +500,7 @@ sealed class FriendsView:UserControl {
         }
     }
     void Open(Player player){
-        if(player!=null&&HenrikClient.HasRiotId(player.Name)&&OpenPlayer!=null)OpenPlayer(player);
+        if(player!=null&&RiotStatsClient.HasRiotId(player.Name)&&OpenPlayer!=null)OpenPlayer(player);
     }
     void LoadFriendIcons(){
         if(preview||!Visible||IsDisposed||Disposing||snapshot==null||snapshot.Account==Guid.Empty||

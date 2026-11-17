@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 [assembly: System.Reflection.AssemblyTitle("Lunar")]
 [assembly: System.Reflection.AssemblyProduct("Lunar")]
-[assembly: System.Reflection.AssemblyFileVersion("1.60.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.78.0.0")]
 
 namespace Lunar {
 static class Json {
@@ -37,12 +37,43 @@ static class Json {
     public static IEnumerable<object> A(object o) { return (o as object[]) ?? new object[0]; }
     public static bool B(object o,string key) { return Get(o,key) is bool && (bool)Get(o,key); }
 }
+static class LunarLanguage {
+    static readonly string FilePath=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Lunar","language.txt");
+    static readonly Dictionary<string,string> Brazilian=new Dictionary<string,string>(StringComparer.Ordinal){
+        {"Home","Início"},{"Live Match","Partida ao vivo"},{"Friends","Amigos"},{"Tracker","Rastreador"},{"Daily Store","Loja diária"},{"Crosshair","Mira"},{"Settings","Configurações"},
+        {"Competitive","Competitivo"},{"Unrated","Unrated"},{"Swiftplay","Disputa rápida"},{"Spike Rush","Disputa da Spike"},{"Deathmatch","Mata-mata"},{"Team Deathmatch","Mata-mata em equipe"},
+        {"Overview","Visão geral"},{"Matches","Partidas"},{"Agents","Agentes"},{"Maps","Mapas"},{"Search","Buscar"},{"Search by Riot ID","Buscar por Riot ID"},
+        {"View rank, stats, and recent matches by Riot ID.","Veja elo, estatísticas e partidas recentes pelo Riot ID."},{"Recent searches","Pesquisas recentes"},{"No profiles viewed in this session.","Nenhum perfil visualizado nesta sessão."},
+        {"Competitive rank","Elo competitivo"},{"Top agents","Agentes mais usados"},{"Most played maps","Mapas mais jogados"},{"Match history","Histórico de partidas"},{"Competitive summary","Resumo competitivo"},
+        {"Damage / round","Dano por rodada"},{"Headshot %","% de tiros na cabeça"},{"Win rate","Taxa de vitória"},{"Wins","Vitórias"},{"Losses","Derrotas"},
+        {"Your team","Seu time"},{"Enemy team","Time inimigo"},{"Blue team","Time azul"},{"Red team","Time vermelho"},{"PLAYER / AGENT","JOGADOR / AGENTE"},{"Rank unavailable","Elo indisponível"},
+        {"Agent Select","Seleção de agente"},{"DEATHMATCH · PLAYERS","MATA-MATA · JOGADORES"},{"YOUR TEAM","SEU TIME"},{"ENEMY TEAM","TIME INIMIGO"},{"RANK","ELO"},{"PEAK","PICO"},{"RECENT","RECENTE"},
+        {"Daily offers","Ofertas diárias"},{"No daily offers were returned.","Nenhuma oferta diária encontrada."},{"Featured bundles","Pacotes em destaque"},{"Night Market is open","O Mercado Noturno está aberto"},{"BALANCE","SALDO"},
+        {"Save a preset or add your own code.","Salve uma configuração ou adicione seu próprio código."},{"Primary · actual size","Principal · tamanho real"},{"Add crosshair","Adicionar mira"},{"Name","Nome"},{"VALORANT import code","Código de importação do VALORANT"},
+        {"Loading player card…","Carregando cartão do jogador…"},{"Player card unavailable","Cartão do jogador indisponível"},{"Status unavailable","Status indisponível"},
+        {"Waiting for VALORANT","Aguardando o VALORANT"},{"Open VALORANT and enter agent select. Lunar connects automatically.","Abra o VALORANT e entre na seleção de agentes. O Lunar conecta automaticamente."},{"Waiting","Aguardando"},{"In match","Em partida"},{"Update ready","Atualização pronta"},{"Update now","Atualizar agora"},{"Loading…","Carregando…"},{"Loading...","Carregando..."}
+    };
+    static bool portuguese=Load();
+    static bool Load(){try{return String.Equals(File.ReadAllText(FilePath).Trim(),"pt-BR",StringComparison.OrdinalIgnoreCase);}catch{return false;}}
+    public static bool Portuguese{get{return portuguese;}}
+    public static void Set(bool value){
+        portuguese=value;
+        try{Directory.CreateDirectory(Path.GetDirectoryName(FilePath));File.WriteAllText(FilePath,value?"pt-BR":"en-US",new UTF8Encoding(false));}catch(IOException){}catch(UnauthorizedAccessException){}
+    }
+    public static string Text(string english,string brazilian){return portuguese?brazilian:english;}
+    public static string Translate(string text){
+        if(String.IsNullOrEmpty(text))return text;
+        if(portuguese){string translated;return Brazilian.TryGetValue(text,out translated)?translated:text;}
+        foreach(var entry in Brazilian)if(String.Equals(entry.Value,text,StringComparison.Ordinal))return entry.Key;
+        return text;
+    }
+}
 class ApiFailure:Exception {
     public int Code; public ApiFailure(int c):base("HTTP "+c) { Code=c; }
 }
 class Player {
     public string Id,Name,Team,State,CardId,AgentId,PartyId,Region;
-    public int AccountLevel;
+    public int AccountLevel;public bool AccountLevelHidden;
     public override string ToString(){return Name??"";}
     public Player Copy(){return (Player)MemberwiseClone();}
 }
@@ -85,7 +116,7 @@ partial class RiotReader {
         var uri=new Uri(url);
         if(isLocal ? uri.Host!="127.0.0.1" : !Regex.IsMatch(uri.Host,@"^((?:pd|shared)\.(na|eu|ap|kr|pbe)|glz-(na|latam|br|eu|ap|kr)-1\.(na|eu|ap|kr|pbe))\.a\.pvp\.net$")) throw new InvalidOperationException();
         var req=(HttpWebRequest)WebRequest.Create(uri);
-        req.UserAgent="Lunar/1.60";req.Method=method; req.Timeout=timeout; req.ReadWriteTimeout=timeout; req.AllowAutoRedirect=false;
+        req.UserAgent="Lunar/1.67";req.Method=method; req.Timeout=timeout; req.ReadWriteTimeout=timeout; req.AllowAutoRedirect=false;
         req.Accept="application/json"; req.AutomaticDecompression=DecompressionMethods.GZip|DecompressionMethods.Deflate;
         if(isLocal) {
             req.Proxy=null;
@@ -178,6 +209,14 @@ partial class RiotReader {
             return new Snapshot {Status="Waiting for Riot Client sign-in"};
         return null;
     }
+    internal RiotStatisticsSession GetStatisticsSession(){
+        try{
+            var pending=InitializeSession(false,true);
+            if(pending!=null||String.IsNullOrWhiteSpace(access)||String.IsNullOrWhiteSpace(entitlement)||String.IsNullOrWhiteSpace(region)||String.IsNullOrWhiteSpace(version))return null;
+            return new RiotStatisticsSession{Access=access,Entitlement=entitlement,Version=version,Region=region};
+        }catch(Exception){return null;}
+        finally{basic=access=entitlement=null;}
+    }
     bool ReadSessionAuthorization(){
         var auth=Request(origin+"/entitlements/v1/token","GET",null,true,false);
         access=Json.S(auth,"accessToken"); entitlement=Json.S(auth,"token"); self=Json.S(auth,"subject");
@@ -243,7 +282,7 @@ partial class RiotReader {
         } else if(unresolved.Length>0) localStatus="rate limit reached";
         int rawCount=pregame?Json.A(Json.Get(Json.Get(data,"AllyTeam"),"Players")).Count()+Json.A(Json.Get(Json.Get(data,"EnemyTeam"),"Players")).Count():Json.A(Json.Get(data,"Players")).Count();
         int resolvedCount=all.Count(p=>names.ContainsKey(p.Id));
-        snap.Diagnostics="Lunar 1.60\r\nPhase: "+snap.Status+"\r\nPlayers in response: "+rawCount+"\r\nAllies: "+snap.Allies.Count+"\r\nOpponents: "+snap.Enemies.Count+"\r\nResolved names: "+resolvedCount+"/"+all.Count+"\r\nRemote service: "+remoteStatus+"\r\nLocal Riot Client: "+localStatus+"\r\nDiagnostics exclude tokens, IDs, names and raw responses.";
+        snap.Diagnostics="Lunar 1.67\r\nPhase: "+snap.Status+"\r\nPlayers in response: "+rawCount+"\r\nAllies: "+snap.Allies.Count+"\r\nOpponents: "+snap.Enemies.Count+"\r\nResolved names: "+resolvedCount+"/"+all.Count+"\r\nRemote service: "+remoteStatus+"\r\nLocal Riot Client: "+localStatus+"\r\nDiagnostics exclude tokens, IDs, names and raw responses.";
         ApplyNames(all,names);
         snap.Self=all.FirstOrDefault(p=>p.Id==self)??GetSelfPlayer();
         snap.Detail=(pregame?"Agent select":"Match in progress")+" · allies: "+snap.Allies.Count+" · opponents: "+snap.Enemies.Count+" · names: "+resolvedCount+"/"+all.Count;
@@ -304,12 +343,8 @@ partial class RiotReader {
             if(!Guid.TryParse(subject,out id) || !seen.Add(subject) || Json.B(p,"IsCoach")) continue;
             string selection=Json.S(p,"CharacterSelectionState");
             var identity=Json.GetAnyCase(p,"PlayerIdentity","playerIdentity","player_identity")??p;
-            int level;
-            var hidden=Json.GetAnyCase(identity,"HideAccountLevel","hideAccountLevel","hide_account_level");
-            bool hide=hidden is bool&&(bool)hidden;
-            var rawLevel=Json.GetAnyCase(identity,"AccountLevel","accountLevel","account_level","Level","level");
-            if(hide||!Int32.TryParse(Convert.ToString(rawLevel,System.Globalization.CultureInfo.InvariantCulture),System.Globalization.NumberStyles.Integer,System.Globalization.CultureInfo.InvariantCulture,out level)||level<1||level>10000)level=0;
-            result.Add(new Player {Id=subject,Name="Name unavailable",AgentId=Json.S(p,"CharacterID"),PartyId=ReadPartyId(p),CardId=Json.S(identity,"PlayerCardID"),AccountLevel=level,Team=team==""?Json.S(p,"TeamID"):team,
+            bool hide=AccountLevels.Hidden(p);int level=AccountLevels.Read(p);
+            result.Add(new Player {Id=subject,Name="Name unavailable",AgentId=Json.S(p,"CharacterID"),PartyId=ReadPartyId(p),CardId=Json.S(identity,"PlayerCardID"),AccountLevel=level,AccountLevelHidden=hide,Team=team==""?Json.S(p,"TeamID"):team,
                 State=subject==self?"YOU":selection=="locked"?"LOCKED IN":selection=="selected"?"SELECTING":"PLAYER"});
         } return result;
     }
@@ -322,6 +357,11 @@ class TrackerSurface:Control {
     public event Action<Player> PlayerClicked;
     readonly List<KeyValuePair<Rectangle,Player>> targets=new List<KeyValuePair<Rectangle,Player>>();
     readonly ToolTip tip=new ToolTip();string hover="";
+    int rosterScroll;
+    internal static bool SingleRoster(Snapshot data){return data.Enemies.Count==0&&data.Allies.Count>5;}
+    internal static int RosterRowHeight(int available,int count){return Math.Max(44,Math.Min(49,available/Math.Max(1,count)));}
+    protected override void OnMouseWheel(MouseEventArgs e){base.OnMouseWheel(e);if(SingleRoster(Data)){rosterScroll=Math.Max(0,rosterScroll-Math.Sign(e.Delta)*88);Invalidate();}}
+    protected override void OnMouseEnter(EventArgs e){base.OnMouseEnter(e);Focus();}
     public Player At(Point point){return targets.Where(t=>t.Key.Contains(point)).Select(t=>t.Value).FirstOrDefault();}
     public void ActivateFirstPlayer(){if(targets.Count==0)throw new InvalidOperationException("No player hit regions");var r=targets[0].Key;OnMouseClick(new MouseEventArgs(MouseButtons.Left,1,r.X+3,r.Y+3,0));}
     protected override void OnMouseClick(MouseEventArgs e){base.OnMouseClick(e);var p=At(e.Location);if(e.Button==MouseButtons.Left&&p!=null&&PlayerClicked!=null)PlayerClicked(p);}
@@ -383,18 +423,23 @@ class TrackerSurface:Control {
         LiveMatchArt.Recent(g,mine,m+18,298);
         int ph=Height-348-24;Box(g,new Rectangle(m,340,pw,ph),Palette.Panel);T(g,"Your session",10,Palette.Text,new Rectangle(m+18,352,pw-36,28),true);L(g,m,394,pw);
         T(g,"●",20,Palette.Accent,new Rectangle(m+96,419,45,40));T(g,Data.Status=="IN MATCH"?"Match in progress":Data.Status=="AGENT SELECT"?"Agent select":"Waiting for connection",10,Palette.Text,new Rectangle(m+18,469,pw-36,30),true);
-        T(g,"Click a player to view",9,Palette.Muted,new Rectangle(m+18,507,pw-36,24));T(g,"their match history.",9,Palette.Muted,new Rectangle(m+18,531,pw-36,24));T(g,"Today: wins and losses",9,Palette.Muted,new Rectangle(m+18,569,pw-36,24));
+        if(Height>=650){T(g,"Click a player to view",9,Palette.Muted,new Rectangle(m+18,507,pw-36,24));T(g,"their match history.",9,Palette.Muted,new Rectangle(m+18,531,pw-36,24));}if(Height>=690)T(g,"Today: wins and losses",9,Palette.Muted,new Rectangle(m+18,569,pw-36,24));
         T(g,Updated,8,Palette.Muted,new Rectangle(m+18,Height-65,pw-36,24));
         Box(g,new Rectangle(x,24,w,Height-48),Palette.Panel);
         T(g,Data.Map==""||Data.Map=="Map unavailable"?"Live Match":Data.Map+"  ·  Live Match",12,Palette.Text,new Rectangle(x+18,34,w-210,32),true);
         Badge(g,"  "+(Data.Status=="IN MATCH"?"IN MATCH":Data.Status=="AGENT SELECT"?"AGENT SELECT":"WAITING"),new Rectangle(x+w-150,40,130,22),Palette.Muted);
-        L(g,x,79,w);int sectionH=(Height-128)/2;
+        L(g,x,79,w);
+        if(SingleRoster(Data)){
+            Team(g,new Rectangle(x,80,w,Height-104),"Players · Deathmatch",Data.Allies,"",Palette.Muted,parties);
+            return;
+        }
+        rosterScroll=0;int sectionH=(Height-128)/2;
         Team(g,new Rectangle(x,80,w,sectionH),"Your team",Data.Allies,side,sideColor,parties);
         string enemySide=side=="Defense"?"Attack":side=="Attack"?"Defense":"";
         Team(g,new Rectangle(x,80+sectionH,w,sectionH),"Enemy team",Data.Enemies,enemySide,side=="Defense"?Palette.Red:Color.FromArgb(94,158,215),parties);
     }
     void Team(Graphics g,Rectangle r,string title,List<Player> players,string side,Color color,Dictionary<string,Color> parties){
-        T(g,title,10,Palette.Text,new Rectangle(r.X+18,r.Y+5,112,30),true);
+        T(g,title,10,Palette.Text,new Rectangle(r.X+18,r.Y+5,190,30),true);
         if(side!=""&&side!="Waiting")Badge(g,"  "+side.ToUpperInvariant(),new Rectangle(r.X+131,r.Y+11,73,19),color);
         T(g,players.Count+" players",8,Palette.Muted,new Rectangle(r.Right-96,r.Y+7,83,25));L(g,r.X,r.Y+40,r.Width);
         bool showPeakName=r.Width>=690;
@@ -403,10 +448,15 @@ class TrackerSurface:Control {
         T(g,"RANK",7,Palette.Muted,new Rectangle(rankX,r.Y+43,100,22));
         T(g,"PEAK",7,Palette.Muted,new Rectangle(peakX,r.Y+43,showPeakName?103:43,22));T(g,"RECENT FORM",7,Palette.Muted,new Rectangle(r.Right-191,r.Y+43,100,22));T(g,"TODAY  W–L",7,Palette.Muted,new Rectangle(r.Right-88,r.Y+43,76,22));L(g,r.X,r.Y+68,r.Width);
         if(players.Count==0){T(g,"Waiting for players...",10,Palette.Muted,new Rectangle(r.X+30,r.Y+110,r.Width-60,42));return;}
-        int rowH=Math.Min(49,(r.Height-72)/Math.Max(5,players.Count));
+        bool single=SingleRoster(Data);
+        int rowH=single?RosterRowHeight(r.Height-72,players.Count):Math.Min(49,(r.Height-72)/Math.Max(5,players.Count));
+        var viewport=new Rectangle(r.X+1,r.Y+70,r.Width-2,Math.Max(0,r.Height-72));
+        if(single)rosterScroll=Math.Min(rosterScroll,Math.Max(0,players.Count*rowH-viewport.Height));
+        var clip=g.Save();g.SetClip(viewport,System.Drawing.Drawing2D.CombineMode.Intersect);
         for(int i=0;i<players.Count;i++){
-            var p=players[i];int y=r.Y+70+i*rowH;bool me=p.State=="YOU";
-            targets.Add(new KeyValuePair<Rectangle,Player>(new Rectangle(r.X+1,y,r.Width-2,rowH),p));
+            var p=players[i];int y=r.Y+70+i*rowH-(single?rosterScroll:0);bool me=p.State=="YOU";
+            var hit=Rectangle.Intersect(viewport,new Rectangle(r.X+1,y,r.Width-2,rowH));
+            if(hit.IsEmpty)continue;targets.Add(new KeyValuePair<Rectangle,Player>(hit,p));
             if(me){using(var b=new SolidBrush(Color.FromArgb(27,26,30)))g.FillRectangle(b,r.X+1,y,r.Width-2,rowH);using(var b=new SolidBrush(Palette.Accent))g.FillRectangle(b,r.X+1,y,2,rowH);}
             Box(g,new Rectangle(r.X+17,y+6,30,30),Color.FromArgb(32,33,37),6);
             string name=p.Name??"Name unavailable";
@@ -415,10 +465,10 @@ class TrackerSurface:Control {
             T(g,name,9,Palette.Text,new Rectangle(r.X+58,y+1,Math.Max(20,rankX-r.X-69),23),true);
             string agent=Catalog.Agent(p.AgentId);
             if(agent=="Agent unavailable")agent=Data.Status=="AGENT SELECT"?"Selecting agent":"Agent unavailable";
-            int labelWidth=Math.Max(20,rankX-r.X-69);
-            T(g,(me?"You · ":"")+agent,8,me?Palette.Accent:Palette.Muted,
-                new Rectangle(r.X+58,y+22,labelWidth,18));
             PlayerProfile profile=null;if(p.Id!=null)Profiles.TryGetValue(p.Id,out profile);
+            int labelWidth=Math.Max(20,rankX-r.X-69);
+            T(g,AccountLevels.Label(p,profile)+" · "+agent,8,me?Palette.Accent:Palette.Muted,
+                new Rectangle(r.X+58,y+22,labelWidth,18));
             bool fresh=profile!=null&&profile.Day==DateTime.Today;
             RankArt.Draw(g,profile==null?-1:profile.Tier,new Rectangle(rankX,y+10,25,25));
             T(g,profile==null?"...":RankArt.Name(profile.Tier)+(profile.Tier>=3&&!profile.RankIsCurrent?"*":""),8,profile==null?Palette.Muted:RankArt.ColorFor(profile.Tier),new Rectangle(rankX+31,y+7,118,24));
@@ -431,6 +481,8 @@ class TrackerSurface:Control {
             T(g,!fresh?"...":profile.Record,11,!fresh?Palette.Muted:profile.RecordColor,new Rectangle(r.Right-86,y+7,75,30),true);
             if(i<players.Count-1)L(g,r.X+17,y+rowH,r.Width-34);
         }
+        g.Restore(clip);
+        if(single&&players.Count*rowH>viewport.Height)T(g,"Scroll to see all players",8,Palette.Muted,new Rectangle(r.X+220,r.Y+8,220,23));
         L(g,r.X,r.Bottom,r.Width);
     }
 }
@@ -457,10 +509,10 @@ class LunarForm:Form {
 }
 
 class Window:LunarForm,IMessageFilter {
-    HistoryView home;SearchView tracker;StoreView storeView;FriendsView friendsView;CrosshairView crosshairView;
-    NavButton trackerNav,storeNav,homeNav,liveNav,friendsNav,crosshairNav;
+    HistoryView home;SearchView tracker;StoreView storeView;FriendsView friendsView;CrosshairView crosshairView;Panel settingsView;
+    NavButton trackerNav,storeNav,homeNav,liveNav,friendsNav,crosshairNav,settingsNav;
     DesktopIntegration desktop;
-    const int ParallelLiveProfiles=10;
+    const int ParallelLiveProfiles=16;
     readonly HashSet<string> statsLoading=new HashSet<string>();
     readonly HashSet<string> artLoading=new HashSet<string>();
     readonly Dictionary<string,byte[]> cardCache=new Dictionary<string,byte[]>();
@@ -476,6 +528,9 @@ class Window:LunarForm,IMessageFilter {
     TrackerSurface surface;bool busy;
     Panel updateNotice;
     Action restartForUpdate;
+    Label languageTitle,languageDescription,languageHelp,hotkeyTitle,hotkeyCurrent,hotkeyHelp,versionFooter,updateReadyLabel;
+    SoftSelect languageSelect;
+    Button updateNowButton,changeHotkeyButton;
     string diagnostics="Waiting for data.";
     readonly Timer timer=new Timer();readonly BackgroundWorker worker=new BackgroundWorker();readonly RiotReader reader=new RiotReader();
     public Window(bool preview=false){
@@ -500,8 +555,9 @@ class Window:LunarForm,IMessageFilter {
         trackerNav=Navigation("Tracker",LunarGlyph.Search,252);trackerNav.Click+=delegate{ShowTracker();};sidebar.Controls.Add(trackerNav);
         storeNav=Navigation("Daily Store",LunarGlyph.Shop,299);storeNav.Click+=delegate{ShowStore();};sidebar.Controls.Add(storeNav);
         crosshairNav=Navigation("Crosshair",LunarGlyph.Crosshair,346);crosshairNav.Click+=delegate{ShowCrosshair();};sidebar.Controls.Add(crosshairNav);
+        settingsNav=Navigation("Settings",LunarGlyph.Settings,393);settingsNav.Click+=delegate{ShowSettings();};sidebar.Controls.Add(settingsNav);
         var bottom=new Panel{Dock=DockStyle.Bottom,Height=110};
-        bottom.Controls.Add(new Label{Text="LUNAR   /   1.60",Dock=DockStyle.Bottom,Height=26,ForeColor=Palette.Muted,Font=new Font("Segoe UI",8)});sidebar.Controls.Add(bottom);
+        versionFooter=new Label{Text="LUNAR   /   1.78",Dock=DockStyle.Bottom,Height=26,ForeColor=Palette.Muted,Font=new Font("Segoe UI",8)};bottom.Controls.Add(versionFooter);sidebar.Controls.Add(bottom);
         surface=new TrackerSurface{Dock=DockStyle.Fill,Profiles=liveProfiles};surface.PlayerClicked+=OpenHistory;
         home=new HistoryView{Dock=DockStyle.Fill,HomeMode=true};
         home.OpenPlayer+=OpenHistory;
@@ -515,14 +571,18 @@ class Window:LunarForm,IMessageFilter {
         friendsView=new FriendsView(preview){Dock=DockStyle.Fill};
         crosshairView=new CrosshairView{Dock=DockStyle.Fill};
         friendsView.OpenPlayer+=OpenHistory;
-        var pages=new Control[]{storeView,tracker,surface,friendsView,crosshairView,home};
+        settingsView=BuildSettingsView();
+        var pages=new Control[]{storeView,tracker,surface,friendsView,crosshairView,home,settingsView};
         foreach(var page in pages)page.Visible=false;
         content.Controls.AddRange(pages);
         Controls.Add(content);
         Controls.Add(sidebar);
         updateNotice=BuildUpdateNotice();
+        ApplyLanguage();
+        Resize+=delegate{if(updateNotice.Visible)updateNotice.Location=new Point(Math.Max(12,ClientSize.Width-updateNotice.Width-18),Math.Max(12,ClientSize.Height-updateNotice.Height-18));};
         Controls.Add(updateNotice);
         SwitchPage(true);
+        Activated+=delegate{if(updateNotice.Visible){updateNotice.Location=new Point(Math.Max(12,ClientSize.Width-updateNotice.Width-18),Math.Max(12,ClientSize.Height-updateNotice.Height-18));updateNotice.BringToFront();}};
         var discord=new DiscordToggle{Checked=true,Location=new Point(0,36),Size=new Size(162,37)};
         discord.Hint.SetBounds(0,1,162,30);
         bottom.Controls.Add(discord.Hint);
@@ -536,30 +596,29 @@ class Window:LunarForm,IMessageFilter {
             if(IsDisposed||Disposing)return;
             var roster=(Snapshot)e.UserState;
             bool changed=current.Match!=roster.Match||current.Status!=roster.Status;
-            int visibleNames=current.Allies.Concat(current.Enemies).Count(player=>HenrikClient.HasRiotId(player.Name));
-            int fetchedNames=roster.Allies.Concat(roster.Enemies).Count(player=>HenrikClient.HasRiotId(player.Name));
+            int visibleNames=current.Allies.Concat(current.Enemies).Count(player=>RiotStatsClient.HasRiotId(player.Name));
+            int fetchedNames=roster.Allies.Concat(roster.Enemies).Count(player=>RiotStatsClient.HasRiotId(player.Name));
             if(changed||fetchedNames>visibleNames)ShowSnapshot(roster);
         };
         worker.RunWorkerCompleted+=delegate(object sender,RunWorkerCompletedEventArgs e){busy=false;if(IsDisposed||Disposing)return;var s=e.Error==null?(Snapshot)e.Result:new Snapshot{Status="Temporary connection issue",Delay=15000};ShowSnapshot(s);timer.Interval=s.Delay;timer.Start();};
-        timer.Interval=5000;timer.Tick+=delegate{RefreshData();};if(!preview)Shown+=delegate{if(!HenrikKey.IsConfigured)HenrikKey.Prompt(this);RefreshData();};FormClosed+=delegate{if(desktop!=null)desktop.Dispose();timer.Stop();timer.Dispose();statsTimer.Stop();statsTimer.Dispose();liveBatchTimer.Stop();liveBatchTimer.Dispose();statsCancel.Cancel();};
+        timer.Interval=5000;timer.Tick+=delegate{RefreshData();};if(!preview)Shown+=delegate{RefreshData();};FormClosed+=delegate{if(desktop!=null)desktop.Dispose();timer.Stop();timer.Dispose();statsTimer.Stop();statsTimer.Dispose();liveBatchTimer.Stop();liveBatchTimer.Dispose();statsCancel.Cancel();};
     }
     Panel BuildUpdateNotice(){
-        var panel=new Panel{Size=new Size(326,76),Anchor=AnchorStyles.Right|AnchorStyles.Bottom,
-            BackColor=Color.FromArgb(24,20,33),Visible=false,TabStop=false};
-        panel.Location=new Point(ClientSize.Width-panel.Width-18,ClientSize.Height-panel.Height-18);
-        panel.Paint+=delegate(object sender,PaintEventArgs e){using(var pen=new Pen(Color.FromArgb(62,51,78)))e.Graphics.DrawRectangle(pen,0,0,panel.Width-1,panel.Height-1);};
-        panel.Controls.Add(new Label{Text="Update ready",Location=new Point(16,13),Size=new Size(160,22),
-            ForeColor=Palette.Text,Font=new Font("Segoe UI",10,FontStyle.Bold)});
-        panel.Controls.Add(new Label{Text="Restart Lunar to install it",Location=new Point(16,38),Size=new Size(185,19),
-            ForeColor=Palette.Muted,Font=new Font("Segoe UI",8)});
-        var restart=new Button{Text="Restart",Location=new Point(229,20),Size=new Size(82,36),
-            FlatStyle=FlatStyle.Flat,BackColor=Palette.Accent,ForeColor=Color.White,Font=new Font("Segoe UI",9,FontStyle.Bold),Cursor=Cursors.Hand};
-        restart.FlatAppearance.BorderSize=0;
-        restart.Click+=delegate{if(restartForUpdate!=null)restartForUpdate();};
-        panel.Controls.Add(restart);
+        var panel=new Panel{Size=new Size(276,62),BackColor=Color.FromArgb(24,20,33),Visible=false,TabStop=false};
+        panel.Paint+=delegate(object sender,PaintEventArgs e){
+            var g=e.Graphics;g.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            using(var path=Skin.Round(new Rectangle(0,0,panel.Width-1,panel.Height-1),14))
+            using(var fill=new SolidBrush(Color.FromArgb(31,26,42)))
+            using(var outline=new Pen(Color.FromArgb(62,51,78))){g.FillPath(fill,path);g.DrawPath(outline,path);}
+        };
+        Action activate=delegate{if(restartForUpdate!=null)restartForUpdate();};
+        updateReadyLabel=new Label{Text="Update ready",Location=new Point(14,4),Size=new Size(126,52),ForeColor=Color.FromArgb(236,237,239),BackColor=Color.Transparent,Font=new Font("Segoe UI",9,FontStyle.Bold),TextAlign=ContentAlignment.MiddleLeft};
+        updateNowButton=new Button{Text="Update now",Location=new Point(150,13),Size=new Size(112,36),FlatStyle=FlatStyle.Flat,BackColor=Color.FromArgb(116,67,177),ForeColor=Color.White,Font=new Font("Segoe UI",9,FontStyle.Bold),Cursor=Cursors.Hand};
+        updateNowButton.FlatAppearance.BorderSize=0;updateNowButton.Click+=delegate{activate();};
+        panel.Controls.Add(updateReadyLabel);panel.Controls.Add(updateNowButton);
+        panel.LocationChanged+=delegate{panel.BringToFront();};
         return panel;
-    }
-    internal void ShowUpdateReady(Action restart){
+    }    internal void ShowUpdateReady(Action restart){
         restartForUpdate=restart;
         if(updateNotice==null||IsDisposed)return;
         updateNotice.Location=new Point(Math.Max(12,ClientSize.Width-updateNotice.Width-18),Math.Max(12,ClientSize.Height-updateNotice.Height-18));
@@ -594,7 +653,7 @@ class Window:LunarForm,IMessageFilter {
         return new NavButton(title,glyph){Location=new Point(12,top),Size=new Size(174,42)};
     }
     void MarkPage(NavButton active){
-        foreach(var button in new[]{homeNav,liveNav,friendsNav,trackerNav,storeNav,crosshairNav})button.Active=button==active;
+        foreach(var button in new[]{homeNav,liveNav,friendsNav,trackerNav,storeNav,crosshairNav,settingsNav})button.Active=button==active;
     }
     void ShowInfo(string title,string text,bool copyable){
         using(var dialog=new Form{Text=title,Size=new Size(640,440),StartPosition=FormStartPosition.CenterParent,BackColor=Palette.Panel,ForeColor=Palette.Text,Padding=new Padding(22)}){
@@ -626,15 +685,15 @@ class Window:LunarForm,IMessageFilter {
     void ScheduleStats(){
         if(isPreview||statsCancel.IsCancellationRequested)return;
         var focusPlayer=profilePage!=null&&profilePage.Visible?selected:null;
-        if(focusPlayer!=null&&!String.IsNullOrEmpty(focusPlayer.Id)&&HenrikClient.HasRiotId(focusPlayer.Name)&&
+        if(focusPlayer!=null&&!String.IsNullOrEmpty(focusPlayer.Id)&&RiotStatsClient.HasRiotId(focusPlayer.Name)&&
             !statsLoading.Contains(focusPlayer.Id)&&(!profiles.ContainsKey(focusPlayer.Id)||
                 profiles[focusPlayer.Id].Day!=DateTime.Today||profiles[focusPlayer.Id].RetryAfter<=DateTime.UtcNow)&&
-            DateTime.UtcNow>=HenrikClient.RemoteRetryAt)
+            DateTime.UtcNow>=RiotStatsClient.RemoteRetryAt)
             LoadStats(focusPlayer,null,true);
         if(DateTime.UtcNow<statsHold)return;
         var priority=new[]{profilePage!=null&&profilePage.Visible?selected:null,current.Self};
         var candidates=priority.Concat(AlternateTeams(current.Allies,current.Enemies))
-            .Where(p=>p!=null&&!String.IsNullOrEmpty(p.Id)&&HenrikClient.HasRiotId(p.Name))
+            .Where(p=>p!=null&&!String.IsNullOrEmpty(p.Id)&&RiotStatsClient.HasRiotId(p.Name))
             .GroupBy(p=>p.Id).Select(group=>group.First()).ToList();
         Func<Player,bool> due=p=>!statsLoading.Contains(p.Id)&&(!profiles.ContainsKey(p.Id)||
             profiles[p.Id].Day!=DateTime.Today||profiles[p.Id].RetryAfter<=DateTime.UtcNow);
@@ -657,7 +716,7 @@ class Window:LunarForm,IMessageFilter {
         if(!statsLoading.Add(player.Id))return;
         try{
             if(pending==null){
-                pending=HenrikClient.LoadLiveAsync(player,statsCancel.Token,new Progress<PlayerProfile>(rank=>{
+                pending=RiotStatsClient.LoadLiveAsync(player,statsCancel.Token,new Progress<PlayerProfile>(rank=>{
                     if(IsDisposed||Disposing||statsCancel.IsCancellationRequested||profiles.ContainsKey(rank.Id))return;
                     if(selected!=null&&selected.Id==rank.Id&&historyView!=null&&!historyView.IsDisposed&&historyView.Profile==null)
                         historyView.UpdateProfile(rank);
@@ -719,7 +778,7 @@ class Window:LunarForm,IMessageFilter {
             return !Object.ReferenceEquals(newest,displayed);
         });
         if(!changed)return;
-        bool stillLoading=roster.Any(player=>HenrikClient.HasRiotId(player.Name)&&
+        bool stillLoading=roster.Any(player=>RiotStatsClient.HasRiotId(player.Name)&&
             (statsLoading.Contains(player.Id)||!profiles.ContainsKey(player.Id)));
         if(!stillLoading)PublishLiveProfiles();
         else if(!liveBatchTimer.Enabled)liveBatchTimer.Start();
@@ -759,7 +818,7 @@ class Window:LunarForm,IMessageFilter {
         try{
             byte[] picture;
             if(!cardCache.TryGetValue(card,out picture)){
-                picture=await Task.Run(()=>HenrikClient.LoadCard(card),statsCancel.Token);
+                picture=await Task.Run(()=>RiotStatsClient.LoadCard(card),statsCancel.Token);
                 if(picture!=null&&!IsDisposed&&!statsCancel.IsCancellationRequested){
                     if(cardCache.Count>=32)cardCache.Clear();
                     cardCache[card]=picture;
@@ -792,7 +851,7 @@ class Window:LunarForm,IMessageFilter {
         }
         if(!artLoading.Add(card))return;
         try{
-            byte[] picture=await Task.Run(()=>HenrikClient.LoadCard(card),statsCancel.Token);
+            byte[] picture=await Task.Run(()=>RiotStatsClient.LoadCard(card),statsCancel.Token);
             if(picture==null||IsDisposed||statsCancel.IsCancellationRequested)return;
             if(cardCache.Count>=32)cardCache.Clear();
             cardCache[card]=picture;
@@ -831,7 +890,7 @@ class Window:LunarForm,IMessageFilter {
         home.Parent.Controls.Add(page);
         ShowPage(page,trackerNav);
         if(pending!=null&&(cached==null||cached.RetryAfter<=DateTime.UtcNow||cached.Limited))LoadStats(player,pending,true);
-        else if(!isPreview&&cached!=null&&cached.Limited&&HenrikClient.RemoteRetryAt<=DateTime.UtcNow)
+        else if(!isPreview&&cached!=null&&cached.Limited&&RiotStatsClient.RemoteRetryAt<=DateTime.UtcNow)
             LoadStats(player,null,true);
         ScheduleStats();
         if(cached!=null)LoadProfileArt(cached);
@@ -841,7 +900,8 @@ class Window:LunarForm,IMessageFilter {
         var s=new Snapshot{Status="AGENT SELECT",Map="Lotus",Match="demo-select",Side="DEFENSE · estimated",Diagnostics="Preview with sample players."};
         for(int i=0;i<5;i++){s.Allies.Add(new Player{Id="demo-a"+i,Name=new[]{"Lunar#BR","Brisa#BR1","Aurora#BR2","Café#123","Domingo#BR1"}[i],State=i==0?"YOU":"LOCKED IN"});s.Enemies.Add(new Player{Id="demo-e"+i,Name=new[]{"Neblina#BR1","Horizonte#BR2","Maré#222","Intervalo#BR1","Lua#999"}[i],State="PLAYER"});}
         int n=0;foreach(var player in s.Allies.Concat(s.Enemies)){
-            var p=new PlayerProfile{Id=player.Id,Name=player.Name,Tier=new[]{23,20,17,15,12}[n%5],RR=42,RankIsCurrent=true,HistoryAvailable=true,DayComplete=true,Message="PREVIEW · sample matches"};p.RankLabel=RankArt.Name(p.Tier);
+            player.AccountLevel=n%3==0?240+n:0;player.AccountLevelHidden=n%3==2;
+            var p=new PlayerProfile{AccountLevel=240+n,AccountLevelHidden=player.AccountLevelHidden,Id=player.Id,Name=player.Name,Tier=new[]{23,20,17,15,12}[n%5],RR=42,RankIsCurrent=true,HistoryAvailable=true,DayComplete=true,Message="PREVIEW · sample matches"};p.RankLabel=RankArt.Name(p.Tier);
             for(int j=0;j<5;j++)p.Matches.Add(new MatchRow{Id="demo-match-"+j,Map=new[]{"Ascent","Haven","Lotus","Icebox","Bind"}[j],Queue="Competitive",Started=DateTime.Now.AddHours(-j-1),Completed=true,Result=n%3==0?(j==3?Outcome.Loss:Outcome.Win):n%3==1?(j==0?Outcome.Win:Outcome.Loss):(j<2?Outcome.Win:j<4?Outcome.Loss:Outcome.Draw),Score=j==3?"9 : 13":"13 : 8",Kda="21 / 14 / 6"});
             HistoryLogic.CountDay(p,DateTime.Today);profiles[p.Id]=p;n++;
         }
@@ -853,7 +913,69 @@ class Window:LunarForm,IMessageFilter {
         s.Enemies[2].PartyId=s.Enemies[3].PartyId="demo-party-2";
         PopulateDemo(s);s.Self=s.Allies[0];ShowSnapshot(s);surface.Updated="PREVIEW · sample data";
     }
-    public void ShowStore(){ShowPage(storeView,storeNav);}
+    Panel BuildSettingsView(){
+        var panel=new Panel{Dock=DockStyle.Fill,BackColor=Palette.Bg};
+        panel.Paint+=delegate(object sender,PaintEventArgs e){
+            ProfileCanvas.T(e.Graphics,LunarLanguage.Text("Settings","Configurações"),24,Palette.Text,new Rectangle(34,28,panel.Width-68,46),true);
+            ProfileCanvas.T(e.Graphics,LunarLanguage.Text("Lunar preferences","Preferências do Lunar"),9,Palette.Muted,new Rectangle(36,72,panel.Width-72,24));
+            using(var pen=new Pen(Palette.Border))e.Graphics.DrawLine(pen,36,108,panel.Width-36,108);
+        };
+        languageTitle=new Label{Text="Language",Location=new Point(38,132),Size=new Size(300,28),ForeColor=Palette.Text,BackColor=Color.Transparent,Font=new Font("Segoe UI",12,FontStyle.Bold)};
+        languageDescription=new Label{Text="Choose the language used by Lunar.",Location=new Point(38,165),Size=new Size(500,24),ForeColor=Palette.Muted,BackColor=Color.Transparent,Font=new Font("Segoe UI",9)};
+        languageHelp=new Label{Text="Updates are checked automatically. When ready, an Update button appears at the bottom right.",Location=new Point(38,257),Size=new Size(650,42),ForeColor=Palette.Muted,BackColor=Color.Transparent,Font=new Font("Segoe UI",9)};
+        languageSelect=new SoftSelect{Location=new Point(38,201),Size=new Size(260,40),Font=new Font("Segoe UI",10),ForeColor=Palette.Text};
+        languageSelect.Items.Add("English");languageSelect.Items.Add("Português (Brasil)");
+        languageSelect.SelectedIndex=LunarLanguage.Portuguese?1:0;
+        languageSelect.SelectedIndexChanged+=delegate{if(languageSelect.SelectedIndex>=0){LunarLanguage.Set(languageSelect.SelectedIndex==1);ApplyLanguage();}};
+        hotkeyTitle=new Label{Text="Live Match hotkey",Location=new Point(38,340),Size=new Size(400,28),ForeColor=Palette.Text,BackColor=Color.Transparent,Font=new Font("Segoe UI",12,FontStyle.Bold)};
+        hotkeyCurrent=new Label{Text="Current shortcut: "+HotkeyPreference.Current.Display,Location=new Point(38,378),Size=new Size(400,24),ForeColor=Palette.Muted,BackColor=Color.Transparent,Font=new Font("Segoe UI",9)};
+        hotkeyHelp=new Label{Text="Change the shortcut used to open the live overlay.",Location=new Point(38,405),Size=new Size(500,24),ForeColor=Palette.Muted,BackColor=Color.Transparent,Font=new Font("Segoe UI",9)};
+        changeHotkeyButton=new Button{Text="Change hotkey",Location=new Point(38,440),Size=new Size(220,40),FlatStyle=FlatStyle.Flat,BackColor=Color.FromArgb(52,37,70),ForeColor=Color.White,Font=new Font("Segoe UI",9,FontStyle.Bold),Cursor=Cursors.Hand};
+        changeHotkeyButton.FlatAppearance.BorderColor=Palette.Border;
+        changeHotkeyButton.Click+=delegate{
+            string current=desktop==null?HotkeyPreference.Current.Display:desktop.HotkeyDisplay;
+            using(var dialog=new HotkeyCaptureDialog(current,LunarLanguage.Portuguese)){
+                if(dialog.ShowDialog(this)!=DialogResult.OK)return;
+                bool saved=desktop==null?SavePreviewHotkey(dialog.CapturedKey,dialog.CapturedModifiers):desktop.SetHotkey(dialog.CapturedKey,dialog.CapturedModifiers);
+                if(saved){hotkeyCurrent.Text=(LunarLanguage.Portuguese?"Atalho atual: ":"Current shortcut: ")+(desktop==null?HotkeyPreference.Current.Display:desktop.HotkeyDisplay);}
+                else MessageBox.Show(this,LunarLanguage.Portuguese?"Essa combinação já está sendo usada por outro aplicativo.":"That key combination is already in use by another application.","Lunar",MessageBoxButtons.OK,MessageBoxIcon.Information);
+            }
+        };
+        panel.Controls.Add(languageTitle);panel.Controls.Add(languageDescription);panel.Controls.Add(languageHelp);panel.Controls.Add(languageSelect);
+        panel.Controls.Add(hotkeyTitle);panel.Controls.Add(hotkeyCurrent);panel.Controls.Add(hotkeyHelp);panel.Controls.Add(changeHotkeyButton);
+        return panel;
+    }
+    static bool SavePreviewHotkey(Keys key,Keys modifiers){if(!HotkeyPreference.Valid(key,modifiers))return false;HotkeyPreference.Save(new HotkeyBinding{Key=key,Modifiers=modifiers});return true;}
+    void ApplyLanguage(){
+        bool pt=LunarLanguage.Portuguese;
+        if(homeNav!=null)homeNav.Text=pt?"Início":"Home";
+        if(liveNav!=null)liveNav.Text=pt?"Partida ao vivo":"Live Match";
+        if(friendsNav!=null)friendsNav.Text=pt?"Amigos":"Friends";
+        if(trackerNav!=null)trackerNav.Text=pt?"Rastreador":"Tracker";
+        if(storeNav!=null)storeNav.Text=pt?"Loja diária":"Daily Store";
+        if(crosshairNav!=null)crosshairNav.Text=pt?"Mira":"Crosshair";
+        if(settingsNav!=null)settingsNav.Text=pt?"Configurações":"Settings";
+        if(languageTitle!=null)languageTitle.Text=pt?"Idioma":"Language";
+        if(languageDescription!=null)languageDescription.Text=pt?"Escolha o idioma usado pelo Lunar.":"Choose the language used by Lunar.";
+        if(languageHelp!=null)languageHelp.Text=pt?"As atualizações são verificadas automaticamente. Quando houver uma, o botão Atualizar aparecerá no canto inferior direito.":"Updates are checked automatically. When ready, an Update button appears at the bottom right.";
+        if(versionFooter!=null)versionFooter.Text="LUNAR   /   1.78";
+        if(updateReadyLabel!=null)updateReadyLabel.Text=pt?"Atualização pronta":"Update ready";
+        if(updateNowButton!=null)updateNowButton.Text=pt?"Atualizar agora":"Update now";
+        if(hotkeyTitle!=null)hotkeyTitle.Text=pt?"Atalho da Partida ao vivo":"Live Match hotkey";
+        if(hotkeyCurrent!=null)hotkeyCurrent.Text=(pt?"Atalho atual: ":"Current shortcut: ")+(desktop==null?HotkeyPreference.Current.Display:desktop.HotkeyDisplay);
+        if(hotkeyHelp!=null)hotkeyHelp.Text=pt?"Altere o atalho que abre o painel da partida ao vivo.":"Change the shortcut used to open the live overlay.";
+        if(changeHotkeyButton!=null)changeHotkeyButton.Text=pt?"Alterar atalho":"Change hotkey";
+        ApplyControlLanguage(this);
+        if(languageSelect!=null)languageSelect.Invalidate();
+        if(settingsView!=null)settingsView.Invalidate();
+    }
+    static void ApplyControlLanguage(Control root){
+        foreach(Control child in root.Controls){
+            if(!(child is SoftSelect)&&!String.IsNullOrEmpty(child.Text))child.Text=LunarLanguage.Translate(child.Text);
+            ApplyControlLanguage(child);
+        }
+    }
+    void ShowSettings(){ShowPage(settingsView,settingsNav);}    public void ShowStore(){ShowPage(storeView,storeNav);}
     public void ShowFriends(){ShowPage(friendsView,friendsNav);}
     public void ShowCrosshair(){ShowPage(crosshairView,crosshairNav);}
     public void ShowTracker(){ShowPage(tracker,trackerNav);}
@@ -873,6 +995,7 @@ class Window:LunarForm,IMessageFilter {
         selected=historyView==null?null:historyView.Player;
         page.Visible=true;
         page.BringToFront();
+        if(updateNotice!=null&&updateNotice.Visible)updateNotice.BringToFront();
         MarkPage(navigation);
         if(page==storeView&&!isPreview)storeView.CheckOnOpen();
         if(page==home&&home.Profile!=null)LoadProfileArt(home.Profile);
@@ -914,13 +1037,37 @@ static class Program {
     [STAThread] static int Main(string[] args) {
         ServicePointManager.SecurityProtocol=SecurityProtocolType.Tls12;
         if(args.Length==1&&args[0]=="--apply-update")return LunarUpdates.Apply();
-        if(args.Contains("--self-test")) {SearchChecks.Run();Tests.Run();HistoryChecks.Run();return ProfileChecks.Run();}
+        if(args.Contains("--self-test")) {SearchChecks.Run();Tests.Run();HistoryChecks.Run();RiotStatsChecks.Run();return ProfileChecks.Run();}
         if(args.Contains("--probe")) {var s=new RiotReader().Poll();Console.WriteLine(s.Status+" | "+s.Detail);return 0;}
         Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
         if(args.Length==2 && args[0].StartsWith("--render")) {
             using(var window=new Window(true)) { if(args[0]!="--render")window.Demo();if(args[0]=="--render-small")window.Size=window.MinimumSize;window.Show();Application.DoEvents();if(args[0]=="--render-tracker"){window.ShowTracker();Application.DoEvents();using(var b=new Bitmap(window.Width,window.Height)){window.DrawToBitmap(b,new Rectangle(0,0,b.Width,b.Height));b.Save(args[1]);}}else if(args[0]=="--render-history")window.RenderHistory(args[1]);else if(args[0]=="--render-matches")window.RenderTab(args[1],1);else if(args[0]=="--render-agents")window.RenderTab(args[1],2);else if(args[0]=="--render-maps")window.RenderTab(args[1],3);else if(args[0]=="--render-detail")window.RenderDetail(args[1]);else using(var bitmap=new Bitmap(window.Width,window.Height)) {window.DrawToBitmap(bitmap,new Rectangle(0,0,bitmap.Width,bitmap.Height));bitmap.Save(args[1]);}window.Close();}return 0;
         }
+        DesktopShortcut.Ensure();
         Application.Run(new Window());return 0;
+    }
+}
+static class DesktopShortcut {
+    public static void Ensure(){
+        object shell=null,shortcut=null;
+        try{
+            var shellType=Type.GetTypeFromProgID("WScript.Shell");
+            if(shellType==null)return;
+            shell=Activator.CreateInstance(shellType);
+            string link=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),"Lunar.lnk");
+            shortcut=shellType.InvokeMember("CreateShortcut",System.Reflection.BindingFlags.InvokeMethod,null,shell,new object[]{link});
+            var linkType=shortcut.GetType();
+            Action<string,string> set=delegate(string name,string value){linkType.InvokeMember(name,System.Reflection.BindingFlags.SetProperty,null,shortcut,new object[]{value});};
+            set("TargetPath",Application.ExecutablePath);
+            set("WorkingDirectory",Path.GetDirectoryName(Application.ExecutablePath));
+            set("IconLocation",Application.ExecutablePath+",0");
+            set("Description","Lunar - VALORANT Tracker");
+            linkType.InvokeMember("Save",System.Reflection.BindingFlags.InvokeMethod,null,shortcut,null);
+        }catch{}
+        finally{
+            if(shortcut!=null&&Marshal.IsComObject(shortcut))Marshal.FinalReleaseComObject(shortcut);
+            if(shell!=null&&Marshal.IsComObject(shell))Marshal.FinalReleaseComObject(shell);
+        }
     }
 }
 static class Tests {
@@ -944,7 +1091,7 @@ static class Tests {
         s=RiotReader.Parse(parse("{\"AllyTeam\":{\"TeamID\":\"Blue\",\"Players\":[{\"Subject\":\""+me+"\",\"player_identity\":{\"account_level\":\"143\"}}]}}"),me,true);
         Check(s.Allies[0].AccountLevel==143,"account level parsed from alternate field casing");
         s=RiotReader.Parse(parse("{\"AllyTeam\":{\"TeamID\":\"Blue\",\"Players\":[{\"Subject\":\""+me+"\",\"PlayerIdentity\":{\"HideAccountLevel\":true,\"AccountLevel\":276}}]}}"),me,true);
-        Check(s.Allies[0].AccountLevel==0,"hidden account level remains private");
+        Check(s.Allies[0].AccountLevel==276,"account level returned with hidden display flag remains available");
         s=RiotReader.Parse(parse("{\"Players\":[{\"Subject\":\""+me+"\",\"TeamID\":\"Red\",\"playerIdentity\":{\"Level\":52}}]}"),me,false);
         Check(s.Allies[0].AccountLevel==52,"account level parsed from lowercase live response");
         s=RiotReader.Parse(parse("{\"Players\":[{\"Subject\":\""+me+"\",\"TeamID\":\"Red\"},{\"Subject\":\""+other+"\",\"TeamID\":\"Blue\",\"PlayerIdentity\":{\"Incognito\":true}}]}"),me,false);

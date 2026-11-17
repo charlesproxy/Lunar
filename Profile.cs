@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Drawing;
@@ -16,13 +16,13 @@ class Performance {
     public double? ADR {get{return HasDamage&&Rounds>0?(double?)((double)Damage/Rounds):null;}}
     public double? HS {get{return HasHits&&Head+Body+Leg>0?(double?)(100.0*Head/(Head+Body+Leg)):null;}}
 }
-class ScorePlayer {public string Id,Name,Team,Agent,PartyId;public int Tier;public Performance Stats;}
+class ScorePlayer {public string Id,Name,Team,Agent,PartyId;public int Tier,AccountLevel;public Performance Stats;}
 static class Catalog {
     static Dictionary<string,string> agents=new Dictionary<string,string>(),seasons=new Dictionary<string,string>();static DateTime retry=DateTime.MinValue;
     static Catalog(){try{using(var stream=typeof(Catalog).Assembly.GetManifestResourceStream("agents.json"))using(var reader=new StreamReader(stream)){foreach(var a in Json.A(Json.Codec.DeserializeObject(reader.ReadToEnd())))if(Json.S(a,"uuid")!="")agents[Json.S(a,"uuid")]=Json.S(a,"displayName");}}catch{}try{using(var stream=typeof(Catalog).Assembly.GetManifestResourceStream("seasons.json"))using(var reader=new StreamReader(stream)){var data=Json.A(Json.Get(Json.Codec.DeserializeObject(reader.ReadToEnd()),"data")).ToList();foreach(var a in data.Where(x=>Json.S(x,"type").EndsWith("::Act")).OrderByDescending(x=>Json.S(x,"startTime"))){DateTime start;if(DateTime.TryParse(Json.S(a,"startTime"),out start)&&start>DateTime.UtcNow)continue;string label=Json.S(a,"title");if(label==""){var parent=data.FirstOrDefault(x=>Json.S(x,"uuid")==Json.S(a,"parentUuid"));label=Json.S(parent,"displayName")+" / "+Json.S(a,"displayName");}seasons[Json.S(a,"uuid")]=label;}}}catch{}}
     public static IEnumerable<string> ActIds(){return seasons.Keys.ToArray();}
     public static readonly string[] Modes={"Competitive","Unrated","Swiftplay","Spike Rush","Deathmatch","Team Deathmatch"};
-    public static readonly string[] Maps={"Abyss","Ascent","Bind","Breeze","Corrode","Fracture","Haven","Icebox","Lotus","Pearl","Split","Sunset","District","Kasbah","Piazza"};
+    public static readonly string[] Maps=MapCatalog.Names;
     public static string Agent(string id){string name;return agents.TryGetValue(id??"",out name)?name:"Agent unavailable";}
     public static string Season(string id){string name;return seasons.TryGetValue(id??"",out name)?name:"Unknown act";}
     public static void SetSeasons(object content){var next=new Dictionary<string,string>(seasons);foreach(var s in Json.A(Json.Get(content,"Seasons")))if(Json.S(s,"Type")=="act"&&Json.S(s,"ID")!="")if(!next.ContainsKey(Json.S(s,"ID")))next[Json.S(s,"ID")]=Json.S(s,"Name");seasons=next;}
@@ -40,22 +40,22 @@ static class StatsMetrics {
         var p=new Performance();var stats=Json.Get(player,"stats");string id=Json.S(player,"subject"),team=Json.S(player,"teamId");
         p.HasKda=Json.Get(stats,"kills")!=null&&Json.Get(stats,"deaths")!=null&&Json.Get(stats,"assists")!=null;
         if(p.HasKda){p.Kills=HistoryLogic.N(stats,"kills");p.Deaths=HistoryLogic.N(stats,"deaths");p.Assists=HistoryLogic.N(stats,"assists");}
-        p.Rounds=HistoryLogic.N(stats,"roundsPlayed");
+        p.Rounds=HistoryLogic.N(stats,"roundsPlayed");p.HasScore=Json.Get(stats,"score")!=null;p.Score=HistoryLogic.N(stats,"score");
         var enemies=new HashSet<string>(Json.A(Json.Get(data,"players")).Where(x=>!Json.B(x,"isObserver")&&Json.S(x,"teamId")!=team&&Json.S(x,"subject")!=id).Select(x=>Json.S(x,"subject")));
         var damage=Json.Get(player,"roundDamage") as object[];
         if(damage!=null&&p.Rounds>0&&enemies.Count>0){p.HasDamage=damage.All(d=>Json.Get(d,"damage")!=null);p.Damage=damage.Where(d=>enemies.Contains(Json.S(d,"receiver"))).Sum(d=>Number(d,"damage"));}
         var rounds=Json.Get(data,"roundResults") as object[];
-        if(rounds!=null&&rounds.Length>0&&p.Rounds>0){int covered=0;bool valid=true;
-            foreach(var r in rounds){var mine=Json.A(Json.Get(r,"playerStats")).FirstOrDefault(s=>Json.S(s,"subject")==id);var shots=Json.Get(mine,"damage") as object[];if(shots==null){valid=false;continue;}covered++;
-                foreach(var hit in shots.Where(d=>enemies.Contains(Json.S(d,"receiver")))){if(Json.Get(hit,"headshots")==null||Json.Get(hit,"bodyshots")==null||Json.Get(hit,"legshots")==null){valid=false;continue;}p.Head+=HistoryLogic.N(hit,"headshots");p.Body+=HistoryLogic.N(hit,"bodyshots");p.Leg+=HistoryLogic.N(hit,"legshots");}}
-            p.HasHits=valid&&covered==p.Rounds&&enemies.Count>0;
+        if(rounds!=null&&rounds.Length>0&&p.Rounds>0){int covered=0;bool valid=true,validDamage=true;double roundDamage=0;
+            foreach(var r in rounds){var mine=Json.A(Json.Get(r,"playerStats")).FirstOrDefault(s=>Json.S(s,"subject")==id);var shots=Json.Get(mine,"damage") as object[];if(shots==null){valid=false;validDamage=false;continue;}covered++;
+                foreach(var hit in shots.Where(d=>enemies.Contains(Json.S(d,"receiver")))){if(Json.Get(hit,"damage")==null)validDamage=false;else roundDamage+=Number(hit,"damage");if(Json.Get(hit,"headshots")==null||Json.Get(hit,"bodyshots")==null||Json.Get(hit,"legshots")==null){valid=false;continue;}p.Head+=HistoryLogic.N(hit,"headshots");p.Body+=HistoryLogic.N(hit,"bodyshots");p.Leg+=HistoryLogic.N(hit,"legshots");}}
+            p.HasHits=valid&&covered==p.Rounds&&enemies.Count>0;if(!p.HasDamage&&validDamage&&covered==p.Rounds&&enemies.Count>0){p.HasDamage=true;p.Damage=roundDamage;}
         }
         return p;
     }
     public static void Enrich(object data,MatchRow row,string subject){
         row.SeasonId=Json.S(Json.Get(data,"matchInfo"),"seasonId");
         foreach(var player in Json.A(Json.Get(data,"players"))){if(Json.B(player,"isObserver"))continue;string name=Json.S(player,"gameName"),tag=Json.S(player,"tagLine"),id=Json.S(player,"subject");var performance=ForPlayer(data,player);
-            row.Roster.Add(new ScorePlayer {Id=id,Name=name==""?"Name unavailable":name+(tag==""?"":"#"+tag),Team=Json.S(player,"teamId"),Agent=Json.S(player,"characterId"),PartyId=RiotReader.ReadPartyId(player),Tier=(int)HistoryLogic.N(player,"competitiveTier",-1),Stats=performance});
+            row.Roster.Add(new ScorePlayer {Id=id,Name=name==""?"Name unavailable":name+(tag==""?"":"#"+tag),Team=Json.S(player,"teamId"),Agent=Json.S(player,"characterId"),PartyId=RiotReader.ReadPartyId(player),Tier=(int)HistoryLogic.N(player,"competitiveTier",-1),AccountLevel=AccountLevels.Read(player),Stats=performance});
             if(String.Equals(id,subject,StringComparison.OrdinalIgnoreCase)){row.Metrics=performance;row.AgentId=Json.S(player,"characterId");}}
     }
     public static string F(double? value,string suffix="",int digits=1){return value.HasValue?value.Value.ToString("F"+digits)+suffix:"—";}
@@ -354,6 +354,10 @@ class HistoryView:UserControl {
         }
     }
     readonly Panel header=new ProfileHeader();
+    readonly Panel loading=new Panel{Dock=DockStyle.Fill,BackColor=Color.FromArgb(13,10,20)};
+    readonly Label loadingTitle=new Label{Text="Loading profile",TextAlign=ContentAlignment.MiddleCenter,ForeColor=Color.FromArgb(236,237,239),Font=new Font("Segoe UI",18,FontStyle.Bold)};
+    readonly Label loadingDetail=new Label{Text="Fetching rank and 10 recent matches…",TextAlign=ContentAlignment.MiddleCenter,ForeColor=Color.FromArgb(160,153,176)};
+    readonly ProgressBar loadingProgress=new ProgressBar{Style=ProgressBarStyle.Marquee,MarqueeAnimationSpeed=25};
     Image playerCard;
     byte[] cardBytes;readonly FlowLayoutPanel tabs=new FlowLayoutPanel(),filters=new FlowLayoutPanel();
     readonly SoftSelect mode=new SoftSelect(),map=new SoftSelect(),period=new SoftSelect(),act=new SoftSelect();
@@ -372,6 +376,14 @@ class HistoryView:UserControl {
         canvas=new ProfileCanvas{Dock=DockStyle.Fill};canvas.OpenMatch+=OpenMatch;
         loadArchive=canvas.ArchiveButton;
         loadArchive.Click+=delegate{LoadArchive();};
+        loading.Controls.AddRange(new Control[]{loadingTitle,loadingDetail,loadingProgress});
+        loading.Resize+=delegate{
+            int x=Math.Max(12,(loading.Width-400)/2),y=Math.Max(24,loading.Height/2-72);
+            loadingTitle.SetBounds(x,y,Math.Min(400,loading.Width-24),40);
+            loadingDetail.SetBounds(x,y+48,Math.Min(400,loading.Width-24),32);
+            loadingProgress.SetBounds(Math.Max(12,(loading.Width-260)/2),y+96,Math.Min(260,loading.Width-24),5);
+        };
+        Controls.Add(loading);
         Controls.Add(canvas);Controls.Add(filters);Controls.Add(tabs);Controls.Add(header);UpdateProfile(null);SetTab(0);
     }
     public void SetTab(int index){activeTab=index;for(int i=0;i<buttons.Count;i++){buttons[i].ForeColor=i==index?Palette.Accent:Palette.Muted;buttons[i].BackColor=i==index?Color.FromArgb(43,30,60):tabs.BackColor;}if(canvas!=null){canvas.Tab=index;RefreshRows();}}
@@ -395,7 +407,7 @@ class HistoryView:UserControl {
             if(cardBytes!=null)using(var stream=new MemoryStream(cardBytes))playerCard=TrackArt.Decode(stream);
         }
         var rows=(value==null?Enumerable.Empty<MatchRow>():value.Matches).Concat(archive.Values);
-        Fill(mode,"All modes",Catalog.Modes.Concat(rows.Select(m=>m.Queue)));Fill(map,"All maps",Catalog.Maps.Concat(rows.Select(m=>m.Map)));
+        Fill(mode,"All modes",Catalog.Modes.Concat(rows.Select(m=>m.Queue)));Fill(map,"All maps",MapCatalog.ForMode(Convert.ToString(mode.SelectedItem)));
         var selectedAct=act.SelectedItem as Choice;
         string old=selectedAct==null?"":selectedAct.Value;
         act.Items.Clear();
@@ -418,7 +430,10 @@ class HistoryView:UserControl {
     }
     void ApplyHomeState(){
         bool disconnected=homeMode&&Player==null;
-        bool showProfile=!disconnected&&scoreboard==null;
+        bool pending=!disconnected&&Player!=null&&(Profile==null||Profile.HistoryLoading)&&scoreboard==null;
+        loading.Visible=pending;
+        if(pending){loadingTitle.Text="Loading profile";loadingDetail.Text="Fetching rank and 10 recent matches…";loading.BringToFront();}
+        bool showProfile=!disconnected&&scoreboard==null&&!pending;
         header.Visible=tabs.Visible=filters.Visible=canvas.Visible=showProfile;
         if(welcome!=null){
             welcome.Visible=disconnected;
@@ -431,7 +446,11 @@ class HistoryView:UserControl {
         int days=period.SelectedIndex==1?1:period.SelectedIndex==2?7:period.SelectedIndex==3?30:0;
         string season=act.SelectedItem is Choice?((Choice)act.SelectedItem).Value:"";
         IEnumerable<MatchRow> rows=Profile==null?Enumerable.Empty<MatchRow>():Profile.Matches;
-        string selectedMode=Convert.ToString(mode.SelectedItem),selectedMap=Convert.ToString(map.SelectedItem);
+        string selectedMode=Convert.ToString(mode.SelectedItem);
+        bool wasUpdating=updating;updating=true;
+        Fill(map,"All maps",MapCatalog.ForMode(selectedMode));
+        updating=wasUpdating;
+        string selectedMap=Convert.ToString(map.SelectedItem);
         DateTime now=DateTime.Now;
         if(archive.Count>0)rows=rows.Concat(archive.Values).GroupBy(match=>match.Id,StringComparer.OrdinalIgnoreCase).Select(group=>group.First());
         var history=StatsMetrics.Filter(rows,selectedMode,selectedMap,season,days,now);
@@ -441,9 +460,9 @@ class HistoryView:UserControl {
         canvas.ArchiveStatus=activeTab<=1?cursor.Status:"";
         canvas.Rows=history;
         canvas.SetHistoryRows(activeTab<=1?history:Enumerable.Empty<MatchRow>());
-        canvas.ShowArchiveFooter=activeTab<=1&&Profile!=null&&Player!=null&&HenrikClient.HasRiotId(Player.Name);
+        canvas.ShowArchiveFooter=activeTab<=1&&Profile!=null&&Player!=null&&RiotStatsClient.HasRiotId(Player.Name);
         loadArchive.Text=archiveRequest!=null?"Stop loading":cursor.Complete?"Archive loaded":cursor.Page>1?"Resume loading":"Load all matches";
-        loadArchive.Enabled=Profile!=null&&Player!=null&&HenrikClient.HasRiotId(Player.Name)&&!cursor.Complete;
+        loadArchive.Enabled=Profile!=null&&Player!=null&&RiotStatsClient.HasRiotId(Player.Name)&&!cursor.Complete;
         if(preserveScroll)canvas.Invalidate();else canvas.ResetScroll();
     }
     async void LoadArchive(){
@@ -458,28 +477,29 @@ class HistoryView:UserControl {
         RefreshRows(true);
         try{
             while(!request.IsCancellationRequested){
-                object[] page=null;
+                object[] page=null;bool lastPage=false;
                 var retryAt=DateTime.MinValue;
-                try{page=await HenrikClient.LoadArchivePage(player,cursor.Page,queue,request.Token);}
-                catch(HenrikRequestException limit){
+                try{var result=await RiotStatsClient.LoadArchivePage(player,cursor.Page,queue,request.Token);page=result.Items;lastPage=result.EndReached;}
+                catch(RiotStatsException limit){
                     if(limit.Status!=429||limit.RetryAfter>DateTime.UtcNow.AddMinutes(5))throw;
                     retryAt=limit.RetryAfter;
                 }
                 if(page==null){
                     cursor.Status="Rate limit · retry at "+retryAt.ToLocalTime().ToString("HH:mm:ss");
                     RefreshRows(true);
-                    await Task.Delay(TimeSpan.FromSeconds(HenrikClient.RetrySeconds(retryAt)),request.Token);
+                    await Task.Delay(TimeSpan.FromSeconds(RiotStatsClient.RetrySeconds(retryAt)),request.Token);
                     continue;
                 }
                 request.Token.ThrowIfCancellationRequested();
                 if(page.Length==0){cursor.Complete=true;break;}
-                var parsed=page.Select(item=>HenrikClient.ParseArchivedMatch(item,player.Id)).Where(match=>match!=null).ToList();
+                var parsed=page.Select(item=>RiotStatsClient.ParseArchivedMatch(item,player.Id)).Where(match=>match!=null).ToList();
                 if(parsed.Count==0)throw new InvalidOperationException("This archived page did not contain recognizable match records.");
                 string pageKey=String.Join("|",parsed.Select(match=>match.Id).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(id=>id,StringComparer.OrdinalIgnoreCase));
                 if(!cursor.Pages.Add(pageKey))throw new InvalidOperationException("The provider repeated a page. Loaded matches are still available.");
                 foreach(var match in parsed.Where(match=>queue=="All modes"||match.Queue==queue))
                     if(!archive.ContainsKey(match.Id))archive.Add(match.Id,match);
                 cursor.Page++;
+                if(lastPage){cursor.Complete=true;break;}
                 cursor.Status="Loading archived matches…";
                 RefreshRows(true);
             }
@@ -522,6 +542,7 @@ class HistoryView:UserControl {
         int x=bounds.X+22;
         ProfileCanvas.T(g,HomeMode?"YOUR PROFILE":"PLAYER PROFILE",9,Color.FromArgb(220,196,243),new Rectangle(x,32,300,24),true);
         ProfileCanvas.T(g,Player==null?"Open VALORANT to connect":Player.Name,25,Color.White,new Rectangle(x,59,bounds.Width-210,51),true);
+        ProfileCanvas.T(g,AccountLevels.Label(Player,Profile)+(Profile!=null&&Profile.AccountLevelFromMatch&&!(Player!=null&&Player.AccountLevel>0)?" · recent match":""),9,Color.FromArgb(220,196,243),new Rectangle(x,111,bounds.Width-210,23));
         if(Profile!=null) {
             ProfileCanvas.T(g,"TODAY · W / L",8,Color.White,new Rectangle(bounds.Right-138,43,110,22),true);
             ProfileCanvas.T(g,Profile.Record,24,Profile.RecordColor==Palette.Muted?Color.White:Profile.RecordColor,new Rectangle(bounds.Right-138,63,110,45),true);
@@ -549,16 +570,16 @@ class HistoryView:UserControl {
         header.Visible=tabs.Visible=filters.Visible=canvas.Visible=false;
         Controls.Add(scoreboard);
         scoreboard.BringToFront();
-        if(row.Roster.Count>0)return;
+        if(row.Roster.Count>0&&row.Roster.All(p=>RiotStatsClient.HasRiotId(p.Name)))return;
         var request=new System.Threading.CancellationTokenSource();
         scoreboardRequest=request;
         detail.Status="Loading scoreboard…";
         try{
-            var match=await HenrikClient.LoadScoreboard(row,Player,request.Token);
+            var match=await RiotStatsClient.LoadScoreboard(row,Player,request.Token);
             if(request.IsCancellationRequested||detail.IsDisposed)return;
             if(match!=null&&match.Roster.Count>0){
                 row.Roster=match.Roster;
-                detail.Match=match;
+                detail.Match=match;detail.Status="";
             }else detail.Status="Scoreboard unavailable for this archived match.";
         }catch(OperationCanceledException){}
          catch(Exception error){
@@ -608,6 +629,7 @@ class ProfileCanvas:Control {
         Controls.Add(ArchiveButton);
     }
     public static void T(Graphics g,string text,float size,Color color,Rectangle r,bool bold=false){
+        text=LunarLanguage.Translate(text);
         const TextFormatFlags flags=TextFormatFlags.EndEllipsis|TextFormatFlags.NoPrefix|TextFormatFlags.VerticalCenter
             |TextFormatFlags.PreserveGraphicsClipping|TextFormatFlags.PreserveGraphicsTranslateTransform;
         if(textFonts==null)textFonts=new Dictionary<KeyValuePair<float,bool>,Font>();
@@ -680,7 +702,7 @@ class ProfileCanvas:Control {
         if(Profile.HistoryLoading&&Rows.Count==0){
             ArchiveButton.Visible=false;
             int statusX=28;
-            if(Tab==0&&Profile.RankIsCurrent){
+            if(Tab==0&&Profile.Tier>=0){
                 int side=Math.Min(314,Math.Max(228,(Width-48)/4));
                 DrawRank(g,new Rectangle(24,40,side,164));
                 statusX=side+48;
@@ -691,7 +713,7 @@ class ProfileCanvas:Control {
         if(Rows.Count==0&&(Tab>1||historyCount==0)){
             if(ArchiveStatus!="")T(g,ArchiveStatus,8,Palette.Muted,new Rectangle(26,4,Width-52,26));
             int x=28;
-            if(Tab==0&&Profile.RankIsCurrent){
+            if(Tab==0&&Profile.Tier>=0){
                 int side=Math.Min(314,Math.Max(228,(Width-48)/4));
                 DrawProfileSidebar(g,new Rectangle(24,40,side,0));
                 x=24+side+24;
@@ -1023,7 +1045,7 @@ class MatchDetailView:Control {
             }
             int center=y+rowHeight/2;
             AgentArt.Draw(g,player.Agent,new Rectangle(panel.X+15,center-14,28,28));
-            bool canOpen=!String.IsNullOrEmpty(player.Id)&&HenrikClient.HasRiotId(player.Name);
+            bool canOpen=!String.IsNullOrEmpty(player.Id)&&RiotStatsClient.HasRiotId(player.Name);
             int nameX=panel.X+54,nameWidth=centers[0]-43-nameX;
             if(canOpen){
                 var hit=Rectangle.Intersect(new Rectangle(panel.X+14,y,centers[0]-panel.X-53,rowHeight),
@@ -1031,7 +1053,7 @@ class MatchDetailView:Control {
                 if(!hit.IsEmpty)playerHits.Add(new KeyValuePair<Rectangle,ScorePlayer>(hit,player));
             }
             ProfileCanvas.T(g,player.Name,10,canOpen?Palette.Text:Palette.Muted,new Rectangle(nameX,y+3,nameWidth,20),true);
-            ProfileCanvas.T(g,Catalog.Agent(player.Agent),8,Palette.Muted,new Rectangle(nameX,y+21,nameWidth,rowHeight-23));
+            ProfileCanvas.T(g,(player.AccountLevel>0?"Level "+player.AccountLevel:"Level —")+" · "+Catalog.Agent(player.Agent),8,Palette.Muted,new Rectangle(nameX,y+21,nameWidth,rowHeight-23));
             RankArt.Draw(g,player.Tier,new Rectangle(centers[0]-15,center-15,30,30));
             var stats=player.Stats;
             string kda=stats.HasKda?stats.Kills+" / "+stats.Deaths+" / "+stats.Assists:"—";

@@ -1,10 +1,19 @@
-param([Parameter(Mandatory=$true)][string]$WixPath,[string]$ObfuscarPath)
+param([string]$WixPath,[string]$ObfuscarPath)
 $ErrorActionPreference='Stop'
 $root=$PSScriptRoot
+if(!$WixPath){
+  $candle=Get-Command candle.exe -ErrorAction SilentlyContinue
+  if($candle){$WixPath=Split-Path -Parent $candle.Source}
+  else{
+    $candidates=@("${env:ProgramFiles(x86)}\WiX Toolset v3.14\bin","${env:ProgramFiles(x86)}\WiX Toolset v3.11\bin","$env:ProgramFiles\WiX Toolset v3.14\bin","$env:ProgramFiles\WiX Toolset v3.11\bin")
+    $WixPath=$candidates|Where-Object {Test-Path (Join-Path $_ 'candle.exe')}|Select-Object -First 1
+  }
+}
+if(!$WixPath -or !(Test-Path (Join-Path $WixPath 'candle.exe')) -or !(Test-Path (Join-Path $WixPath 'light.exe'))){throw 'WiX Toolset 3.11 or 3.14 is required to build the MSI. Install WiX on the build machine, then rerun this script.'}
 $source=Join-Path $root 'LunarSetup.wxs'
 Push-Location $root
 try{
-  & (Join-Path $root 'build.ps1') -EmbedHenrikKey
+  & (Join-Path $root 'build.ps1')
   $app=Get-ChildItem -LiteralPath $root -File -Filter 'Lunar-*.exe' | Sort-Object { [version]$_.VersionInfo.FileVersion } -Descending | Select-Object -First 1
   $version=[version]$app.VersionInfo.FileVersion
   $versionString="$($version.Major).$($version.Minor).$($version.Build)"

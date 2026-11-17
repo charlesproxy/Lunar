@@ -47,11 +47,11 @@ static class LunarUpdates {
         Version version;
         if(!Version.TryParse(Json.S(manifest,"version"),out version)||version.Build<0||version.Revision<0)
             throw new InvalidDataException("Invalid update version.");
-        var package=Json.Get(manifest,"installer");
+        var package=Json.Get(manifest,"application");
         string release=ReleaseVersion(version);
         var update=new UpdatePackage{Version=version,Installed=installed,Name=Json.S(package,"name"),
             Hash=Json.S(package,"sha256"),Size=HistoryLogic.N(package,"size",-1)};
-        if(update.Name!="Lunar-Setup-"+release+".msi"||
+        if(update.Name!="Lunar-"+release+".exe"||
             update.Size<=0||update.Size>MaxPackage||!Regex.IsMatch(update.Hash,@"\A[0-9a-fA-F]{64}\z"))
             throw new InvalidDataException("Invalid update package.");
         return update;
@@ -149,28 +149,18 @@ static class LunarUpdates {
         }catch(Exception){return 1;}
     }
     static bool Install(string source,string target,UpdatePackage package){
-        if(package.Installed)return WindowsInstaller("/i \""+source+"\" /qn /norestart");
-        string extraction=Path.Combine(Path.GetDirectoryName(source),"extracted");
-        Directory.CreateDirectory(extraction);
-        if(!WindowsInstaller("/a \""+source+"\" /qn /norestart TARGETDIR=\""+extraction+"\""))return false;
-        var extracted=Directory.GetFiles(extraction,"Lunar.exe",SearchOption.AllDirectories);
-        if(extracted.Length!=1||ReadVersion(extracted[0])!=package.Version)return false;
+        if(!String.Equals(Path.GetExtension(source),".exe",StringComparison.OrdinalIgnoreCase)||
+            ReadVersion(source)!=package.Version)return false;
         string temporary=target+"."+Guid.NewGuid().ToString("N")+".update";
         try{
-            File.Copy(extracted[0],temporary);
-            File.Replace(temporary,target,null);
-            DeleteFile(extracted[0]);
-            return true;
+            File.Copy(source,temporary);
+            for(int attempt=0;attempt<20;attempt++){
+                try{File.Replace(temporary,target,null);return true;}
+                catch(IOException){if(attempt==19)return false;Thread.Sleep(250);}
+                catch(UnauthorizedAccessException){return false;}
+            }
+            return false;
         }finally{DeleteFile(temporary);}
-    }
-    static bool WindowsInstaller(string arguments){
-        var system=Environment.GetFolderPath(Environment.SpecialFolder.System);
-        using(var setup=Process.Start(new ProcessStartInfo(Path.Combine(system,"msiexec.exe"),arguments){
-            UseShellExecute=false,CreateNoWindow=true
-        })){
-            setup.WaitForExit();
-            return setup.ExitCode==0;
-        }
     }
     static void DeleteFile(string path){
         try{File.Delete(path);}catch(IOException){}catch(UnauthorizedAccessException){}

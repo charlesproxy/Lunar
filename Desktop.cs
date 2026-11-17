@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -12,6 +12,44 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace Lunar {
+sealed class HotkeyBinding {
+    public Keys Key,Modifiers;
+    public string Display{
+        get{
+            var parts=new List<string>();
+            if((Modifiers&Keys.Control)==Keys.Control)parts.Add("Ctrl");
+            if((Modifiers&Keys.Alt)==Keys.Alt)parts.Add("Alt");
+            if((Modifiers&Keys.Shift)==Keys.Shift)parts.Add("Shift");
+            parts.Add(Key.ToString());
+            return String.Join("+",parts.ToArray());
+        }
+    }
+}
+static class HotkeyPreference {
+    static readonly string FilePath=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Lunar","hotkey.txt");
+    static HotkeyBinding current=Load();
+    public static HotkeyBinding Current{get{return new HotkeyBinding{Key=current.Key,Modifiers=current.Modifiers};}}
+    static HotkeyBinding Load(){
+        try{
+            var values=File.ReadAllText(FilePath).Trim().Split(',');int key,modifiers;
+            if(values.Length==2&&Int32.TryParse(values[0],out key)&&Int32.TryParse(values[1],out modifiers)){
+                var result=new HotkeyBinding{Key=(Keys)key,Modifiers=(Keys)modifiers};
+                if(Valid(result.Key,result.Modifiers))return result;
+            }
+        }catch(IOException){}catch(UnauthorizedAccessException){}catch(ArgumentException){}
+        return new HotkeyBinding{Key=Keys.T,Modifiers=Keys.Alt};
+    }
+    public static bool Valid(Keys key,Keys modifiers){
+        Keys allowed=Keys.Alt|Keys.Control|Keys.Shift;
+        return key!=Keys.None&&Enum.IsDefined(typeof(Keys),key)&&(key&Keys.KeyCode)==key&&key!=Keys.Menu&&key!=Keys.ControlKey&&key!=Keys.ShiftKey&&
+            (modifiers&~allowed)==Keys.None&&(modifiers&allowed)!=Keys.None;
+    }
+    public static void Save(HotkeyBinding value){
+        current=new HotkeyBinding{Key=value.Key,Modifiers=value.Modifiers};
+        try{Directory.CreateDirectory(Path.GetDirectoryName(FilePath));File.WriteAllText(FilePath,((int)current.Key)+","+((int)current.Modifiers));}
+        catch(IOException){}catch(UnauthorizedAccessException){}
+    }
+}
 partial class RiotReader {
     string partyLookupMatch="",partyLookupAccount="",ownParty="";
     Snapshot previousPartyRoster;
@@ -197,7 +235,7 @@ partial class RiotReader {
 
 sealed class DesktopIntegration:IDisposable {
     const int Shortcut=0x4C54, HotkeyMessage=0x0312;
-    const uint Alt=0x0001,NoRepeat=0x4000;
+    const uint Alt=0x0001,Control=0x0002,Shift=0x0004,NoRepeat=0x4000;
     readonly Window main;
     readonly NotifyIcon tray;
     readonly ContextMenuStrip menu;
@@ -225,6 +263,7 @@ sealed class DesktopIntegration:IDisposable {
     bool shortcutActive,exit,registered,watchingFallback,fallbackDown;
     DateTime nextHotkeyAttempt;
     IntPtr registeredHandle;
+    Keys hotkey=HotkeyPreference.Current.Key,hotkeyModifiers=HotkeyPreference.Current.Modifiers;
 
     [DllImport("user32.dll")] static extern bool RegisterHotKey(IntPtr hwnd,int id,uint modifiers,uint key);
     [DllImport("user32.dll")] static extern bool UnregisterHotKey(IntPtr hwnd,int id);
@@ -270,11 +309,7 @@ sealed class DesktopIntegration:IDisposable {
         updateTimer.Start();
     }
     async void CheckUpdates(){
-        if(pendingUpdate!=null){
-            if((!main.Visible||main.WindowState==FormWindowState.Minimized)&&!shortcutActive&&
-                !Process.GetProcessesByName("VALORANT-Win64-Shipping").Any())ExitWithUpdate(true);
-            return;
-        }
+        if(pendingUpdate!=null)return;
         if(checkingUpdate||DateTime.UtcNow<nextUpdateCheck)return;
         checkingUpdate=true;
         nextUpdateCheck=DateTime.UtcNow.AddHours(3);
@@ -289,17 +324,18 @@ sealed class DesktopIntegration:IDisposable {
         }catch(Exception){}
         finally{checkingUpdate=false;}
     }
+    internal bool UpdateCheckActive {get{return checkingUpdate;}}
+    internal bool UpdateReady {get{return pendingUpdate!=null;}}
+    internal void CheckUpdatesNow(){nextUpdateCheck=DateTime.MinValue;CheckUpdates();}
     void ExitWithUpdate(bool restart){
-        if(pendingUpdate!=null){
+        if(restart&&pendingUpdate!=null){
             try{LunarUpdates.Start(pendingUpdate,restart);}
             catch(Exception){
-                if(restart){
-                    pendingUpdate=null;
-                    installUpdate.Available=false;
-                    main.HideUpdateReady();
-                    nextUpdateCheck=DateTime.UtcNow.AddMinutes(5);
-                    return;
-                }
+                pendingUpdate=null;
+                installUpdate.Available=false;
+                main.HideUpdateReady();
+                nextUpdateCheck=DateTime.UtcNow.AddMinutes(5);
+                return;
             }
         }else if(restart)return;
         exit=true;
@@ -317,7 +353,25 @@ sealed class DesktopIntegration:IDisposable {
         if(registered||!main.IsHandleCreated||DateTime.UtcNow<nextHotkeyAttempt)return;
         nextHotkeyAttempt=DateTime.UtcNow.AddSeconds(2);
         registeredHandle=main.Handle;
-        registered=RegisterHotKey(registeredHandle,Shortcut,Alt|NoRepeat,(uint)Keys.T);
+        registered=RegisterHotKey(registeredHandle,Shortcut,NativeModifiers(hotkeyModifiers)|NoRepeat,(uint)hotkey);
+    }
+    static uint NativeModifiers(Keys modifiers){
+        uint result=0;
+        if((modifiers&Keys.Alt)==Keys.Alt)result|=Alt;
+        if((modifiers&Keys.Control)==Keys.Control)result|=Control;
+        if((modifiers&Keys.Shift)==Keys.Shift)result|=Shift;
+        return result;
+    }
+    internal string HotkeyDisplay{get{return new HotkeyBinding{Key=hotkey,Modifiers=hotkeyModifiers}.Display;}}
+    internal bool SetHotkey(Keys key,Keys modifiers){
+        if(!HotkeyPreference.Valid(key,modifiers)||!main.IsHandleCreated)return false;
+        UnregisterShortcut();
+        bool available=RegisterHotKey(main.Handle,Shortcut,NativeModifiers(modifiers)|NoRepeat,(uint)key);
+        if(available)UnregisterHotKey(main.Handle,Shortcut);
+        else{nextHotkeyAttempt=DateTime.MinValue;return false;}
+        hotkey=key;hotkeyModifiers=modifiers;HotkeyPreference.Save(new HotkeyBinding{Key=key,Modifiers=modifiers});
+        nextHotkeyAttempt=DateTime.MinValue;
+        return true;
     }
     void UnregisterShortcut(){
         if(registered)UnregisterHotKey(registeredHandle,Shortcut);
@@ -375,7 +429,11 @@ sealed class DesktopIntegration:IDisposable {
         }
     }
     void ReadShortcutFallback(Rectangle game,IntPtr gameWindow){
-        if(FallbackPressed(KeyDown(Keys.Menu)&&KeyDown(Keys.T)))ToggleOverlay(game,gameWindow);
+        bool pressed=KeyDown(hotkey)&&
+            (((hotkeyModifiers&Keys.Alt)==Keys.Alt)==KeyDown(Keys.Menu))&&
+            (((hotkeyModifiers&Keys.Control)==Keys.Control)==KeyDown(Keys.ControlKey))&&
+            (((hotkeyModifiers&Keys.Shift)==Keys.Shift)==KeyDown(Keys.ShiftKey));
+        if(FallbackPressed(pressed))ToggleOverlay(game,gameWindow);
     }
     bool FallbackPressed(bool pressed){
         bool toggle=watchingFallback&&pressed&&!fallbackDown;
@@ -501,6 +559,36 @@ sealed class DesktopIntegration:IDisposable {
         backdrop.Dispose();
         tray.Visible=false;tray.Dispose();menu.Dispose();if(trayLogo!=null)trayLogo.Dispose();
         discord.Dispose();
+    }
+}
+sealed class HotkeyCaptureDialog:Form {
+    readonly Label prompt;
+    public Keys CapturedKey{get;private set;}
+    public Keys CapturedModifiers{get;private set;}
+    public HotkeyCaptureDialog(string current,bool portuguese){
+        Text=portuguese?"Alterar atalho":"Change hotkey";
+        FormBorderStyle=FormBorderStyle.FixedDialog;StartPosition=FormStartPosition.CenterParent;
+        ShowInTaskbar=false;MaximizeBox=false;MinimizeBox=false;KeyPreview=true;
+        ClientSize=new Size(430,170);BackColor=Color.FromArgb(20,16,29);ForeColor=Palette.Text;
+        var title=new Label{Text=portuguese?"Pressione a nova combinação":"Press the new key combination",Location=new Point(22,19),Size=new Size(385,28),Font=new Font("Segoe UI",12,FontStyle.Bold),ForeColor=Palette.Text,BackColor=Color.Transparent};
+        prompt=new Label{Text=(portuguese?"Atalho atual: ":"Current shortcut: ")+current+"\r\n"+(portuguese?"Use Alt, Ctrl ou Shift junto com uma tecla. Esc cancela.":"Use Alt, Ctrl or Shift with a key. Esc cancels."),Location=new Point(24,58),Size=new Size(385,48),Font=new Font("Segoe UI",9),ForeColor=Palette.Muted,BackColor=Color.Transparent};
+        var cancel=new Button{Text=portuguese?"Cancelar":"Cancel",Location=new Point(314,119),Size=new Size(96,32),FlatStyle=FlatStyle.Flat,BackColor=Color.FromArgb(42,32,55),ForeColor=Palette.Text,Font=new Font("Segoe UI",9),DialogResult=DialogResult.Cancel};
+        cancel.FlatAppearance.BorderColor=Palette.Border;Controls.Add(title);Controls.Add(prompt);Controls.Add(cancel);CancelButton=cancel;
+        KeyDown+=CaptureKey;
+    }
+    void CaptureKey(object sender,KeyEventArgs e){
+        e.Handled=true;e.SuppressKeyPress=true;
+        if(e.KeyCode==Keys.Escape){DialogResult=DialogResult.Cancel;Close();return;}
+        if(e.KeyCode==Keys.Menu||e.KeyCode==Keys.ControlKey||e.KeyCode==Keys.ShiftKey||e.KeyCode==Keys.LWin||e.KeyCode==Keys.RWin)return;
+        Keys modifiers=Keys.None;
+        if(e.Alt)modifiers|=Keys.Alt;
+        if(e.Control)modifiers|=Keys.Control;
+        if(e.Shift)modifiers|=Keys.Shift;
+        if(!HotkeyPreference.Valid(e.KeyCode,modifiers)){
+            prompt.Text=Text.StartsWith("Alterar",StringComparison.Ordinal)?"Use pelo menos Alt, Ctrl ou Shift com uma tecla.":"Use at least Alt, Ctrl or Shift with a key.";
+            return;
+        }
+        CapturedKey=e.KeyCode;CapturedModifiers=modifiers;DialogResult=DialogResult.OK;Close();
     }
 }
 sealed class OverlayBackdrop:Form {
@@ -763,7 +851,7 @@ sealed class AgentSelectOverlay:Form {
         ProfileCanvas.T(g,badge,8,sideColor,Rectangle.Inflate(sideBadge,-8,0),true);
         using(var line=new Pen(Stroke))g.DrawLine(line,14,60,Width-15,60);
         int rankX=Width-RankOffset,peakX=Width-PeakOffset,kdX=Width-KdOffset,hsX=Width-HeadshotOffset,formX=Width-RecentOffset;
-        ProfileCanvas.T(g,"YOUR TEAM",8,Palette.Muted,new Rectangle(15,63,145,25),true);
+        ProfileCanvas.T(g,TrackerSurface.SingleRoster(snapshot)?"DEATHMATCH · PLAYERS":"YOUR TEAM",8,Palette.Muted,new Rectangle(15,63,145,25),true);
         ProfileCanvas.T(g,"RANK",8,Palette.Muted,new Rectangle(rankX,63,48,25));
         ProfileCanvas.T(g,"PEAK",8,Palette.Muted,new Rectangle(peakX,63,48,25));
         ProfileCanvas.T(g,"K/D",8,Palette.Muted,new Rectangle(kdX,63,43,25));
@@ -809,7 +897,8 @@ sealed class AgentSelectOverlay:Form {
             LiveMatchArt.Stripe(g,colors,player,new Rectangle(13,y+(height-icon)/2,3,icon));
             var portrait=new Rectangle(19,y+(height-icon)/2,icon,icon);
             AgentArt.Draw(g,player.AgentId,portrait);
-            if(player.AccountLevel>0)DrawLevel(g,portrait,player.AccountLevel);
+            PlayerProfile levelProfile;profiles.TryGetValue(player.Id,out levelProfile);
+            DrawLevel(g,portrait,AccountLevels.Display(player,levelProfile));
             ProfileCanvas.T(g,player.Name,9,me?Palette.Accent:Palette.Text,new Rectangle(54,y,Math.Max(1,rankX-59),height),true);
             PlayerProfile profile;
             profiles.TryGetValue(player.Id,out profile);
@@ -822,8 +911,7 @@ sealed class AgentSelectOverlay:Form {
             LiveMatchArt.Recent(g,profile,formX-3,y+(height-16)/2,17);
         }
     }
-    void DrawLevel(Graphics g,Rectangle portrait,int level){
-        string text=level.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    void DrawLevel(Graphics g,Rectangle portrait,string text){
         const TextFormatFlags flags=TextFormatFlags.NoPadding|TextFormatFlags.SingleLine|
             TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter;
         int width=TextRenderer.MeasureText(g,text,levelFont,Size.Empty,flags).Width+6;

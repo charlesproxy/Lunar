@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Drawing;
@@ -16,9 +16,10 @@ class MatchRow {
 }
 class PlayerProfile {
     public int PeakTier=-1;
+    public int AccountLevel;public bool AccountLevelHidden,AccountLevelFromMatch;
     public byte[] CardArt;
     public string CardId;
-    public string Id,Name,Message="",RankLabel="Rank unavailable";
+    public string Id,Name,Message="",RankLabel="Unrated";
     public int Tier=-1,RR=-1,Wins,Losses,Draws,Unknown;
     public bool HistoryAvailable,HistoryLoading,DayComplete,RankIsCurrent,Limited;
     public DateTime Day=DateTime.Today,Loaded=DateTime.Now;
@@ -30,14 +31,10 @@ class PlayerProfile {
 static class HistoryLogic {
     public static long N(object o,string key,long fallback=0){long n;return Int64.TryParse(Json.S(o,key),out n)?n:fallback;}
     public static DateTime LocalTime(long ms){try{return new DateTime(1970,1,1,0,0,0,DateTimeKind.Utc).AddMilliseconds(ms).ToLocalTime();}catch{return DateTime.MinValue;}}
-    public static string MapName(string path){
-        var parts=(path??"").Split('/');string last=parts.LastOrDefault()??"";
-        var maps=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase){{"Ascent","Ascent"},{"Bonsai","Split"},{"Canyon","Fracture"},{"Duality","Bind"},{"Foxtrot","Breeze"},{"HURM_Alley","District"},{"HURM_Bowl","Kasbah"},{"HURM_Yard","Piazza"},{"Jam","Lotus"},{"Juliett","Sunset"},{"Pitt","Pearl"},{"Port","Icebox"},{"Triad","Haven"},{"Infinity","Abyss"},{"Rook","Corrode"}};
-        return maps.ContainsKey(last)?maps[last]:String.IsNullOrWhiteSpace(last)?"Map unavailable":last;
-    }
+    public static string MapName(string path){return MapCatalog.Name(path);}
     public static string QueueName(string queue){switch(queue){case "competitive":return "Competitive";case "unrated":return "Unrated";case "swiftplay":return "Swiftplay";case "spikerush":return "Spike Rush";case "deathmatch":return "Deathmatch";case "hurm":return "Team Deathmatch";default:return String.IsNullOrEmpty(queue)?"Mode unavailable":queue;}}
     public static MatchRow ParseMatch(object data,string subject){
-        var info=Json.Get(data,"matchInfo");var row=new MatchRow {Id=Json.S(info,"matchId"),Map=MapName(Json.S(info,"mapId")),Queue=QueueName(Json.S(info,"queueID")),Started=LocalTime(N(info,"gameStartMillis")),Completed=Json.B(info,"isCompleted")};
+        var info=Json.Get(data,"matchInfo");var row=new MatchRow {Id=Json.S(info,"matchId"),Map=MapName(Json.S(info,"mapId")),MapId=TrackArt.MapId(MapName(Json.S(info,"mapId"))),Queue=QueueName(Json.S(info,"queueID")),Started=LocalTime(N(info,"gameStartMillis")),Completed=Json.B(info,"isCompleted")};
         StatsMetrics.Enrich(data,row,subject);
         var p=Json.A(Json.Get(data,"players")).FirstOrDefault(v=>String.Equals(Json.S(v,"subject"),subject,StringComparison.OrdinalIgnoreCase));
         if(p==null)return row;
@@ -142,7 +139,7 @@ static class RankArt {
     static readonly Dictionary<int,Image> icons=new Dictionary<int,Image>();
     static RankArt(){for(int i=0;i<=27;i++){using(var stream=typeof(RankArt).Assembly.GetManifestResourceStream("rank-"+i+".png")){if(stream!=null)using(var img=Image.FromStream(stream))icons[i]=new Bitmap(img);}}}
 
-    public static string Name(int tier){if(tier<0)return "Rank unavailable";if(tier<3)return "Unranked";if(tier==27)return "Radiant";string[] groups={"Iron","Bronze","Silver","Gold","Platinum","Diamond","Ascendant","Immortal"};int group=(tier-3)/3;return group<groups.Length?groups[group]+" "+((tier-3)%3+1):"Unknown rank";}
+    public static string Name(int tier){if(tier<3)return "Unrated";if(tier==27)return "Radiant";string[] groups={"Iron","Bronze","Silver","Gold","Platinum","Diamond","Ascendant","Immortal"};int group=(tier-3)/3;return group<groups.Length?groups[group]+" "+((tier-3)%3+1):"Unknown rank";}
     public static Color ColorFor(int tier){if(tier<3)return Palette.Muted;Color[] colors={Color.FromArgb(147,151,153),Color.FromArgb(177,130,91),Color.FromArgb(207,216,219),Color.FromArgb(227,192,97),Color.FromArgb(91,190,194),Color.FromArgb(171,141,229),Color.FromArgb(101,195,150),Color.FromArgb(218,103,131),Color.FromArgb(244,227,169)};return colors[Math.Min(8,(tier-3)/3)];}
     public static void Draw(Graphics g,int tier,Rectangle r){
         Image icon;if(icons.TryGetValue(tier<3?0:tier,out icon)){g.InterpolationMode=System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;g.DrawImage(icon,r);return;}
@@ -212,6 +209,34 @@ static class HistoryChecks {
         Check(rank.Tier==0&&rank.RR==-1,"placements do not present an old rank as current");
         using(var c=new CancellationTokenSource()){c.Cancel();bool canceled=false;try{engine.Load(id,"Test","na",fake,c.Token);}catch(OperationCanceledException){canceled=true;}Check(canceled,"cancellation exits before requests");}
         Console.WriteLine(count+" history checks passed.");return 0;
+    }
+}
+}
+namespace Lunar {
+static class MapCatalog {
+    static readonly Dictionary<string,string> aliases=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
+    internal static readonly string[] Names;
+    static MapCatalog(){
+        var names=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using(var stream=typeof(MapCatalog).Assembly.GetManifestResourceStream("maps.json"))
+        using(var reader=new System.IO.StreamReader(stream)){
+            foreach(var item in Json.A(Json.Codec.DeserializeObject(reader.ReadToEnd()))){
+                string name=Json.S(item,"name"),id=Json.S(item,"id"),path=Json.S(item,"path");
+                if(name=="")continue;
+                names.Add(name);aliases[name]=name;
+                if(id!="")aliases[id]=name;
+                if(path!=""){aliases[path]=name;aliases[path.Split('/').Last()]=name;}
+            }
+        }
+        Names=names.OrderBy(n=>n,StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+    internal static readonly string[] StandardMaps={"Abyss","Ascent","Bind","Breeze","Corrode","Fracture","Haven","Icebox","Lotus","Pearl","Split","Summit","Sunset"};
+    internal static readonly string[] TeamDeathmatchMaps={"District","Kasbah","Drift","Glitch","Piazza"};
+    internal static IEnumerable<string> ForMode(string mode){
+        return mode=="Team Deathmatch"?TeamDeathmatchMaps:mode=="All modes"?StandardMaps.Concat(TeamDeathmatchMaps):StandardMaps;
+    }
+    internal static string Name(string value){
+        string name;return !String.IsNullOrWhiteSpace(value)&&aliases.TryGetValue(value.Trim().TrimEnd('/'),out name)?name:"Map unavailable";
     }
 }
 }

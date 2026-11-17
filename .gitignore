@@ -10,3 +10,7 @@
 .env.*
 *.user
 /*.msi
+
+# Riot sessions (never package credentials)
+ssid.txt
+*.ssid
