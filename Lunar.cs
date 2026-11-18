@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 [assembly: System.Reflection.AssemblyTitle("Lunar")]
 [assembly: System.Reflection.AssemblyProduct("Lunar")]
-[assembly: System.Reflection.AssemblyFileVersion("1.83.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.84.0.0")]
 
 namespace Lunar {
 static class Json {
@@ -566,6 +566,7 @@ class Window:LunarForm,IMessageFilter {
         Resize+=delegate{if(updateNotice.Visible)updateNotice.Present(ClientSize,false);};
         Controls.Add(updateNotice);
         Controls.Add(fullscreenNotice);
+        fullscreenNotice.VisibleChanged+=delegate{if(!fullscreenNotice.Visible)TaskbarAlert.Clear(this);};
         Resize+=delegate{if(fullscreenNotice.Visible)PlaceFullscreenNotice();};
         SwitchPage(true);
         Activated+=delegate{if(updateNotice.Visible)updateNotice.Present(ClientSize,false);};
@@ -606,6 +607,15 @@ class Window:LunarForm,IMessageFilter {
     internal void ShowFullscreenNotice(){
         if(IsDisposed||FullscreenNoticeCard.Disabled)return;
         PlaceFullscreenNotice();
+    }
+    DateTime lastAlertSound=DateTime.MinValue;
+    // Sound + yellow taskbar highlight when the overlay could not appear (exclusive Fullscreen). Cleared when the
+    // notice card is closed.
+    internal void AlertFullscreen(){
+        if(IsDisposed||FullscreenNoticeCard.Disabled)return;
+        bool sound=DateTime.UtcNow-lastAlertSound>TimeSpan.FromSeconds(4);
+        if(sound)lastAlertSound=DateTime.UtcNow;
+        TaskbarAlert.Raise(this,"The overlay did not appear",sound);
     }
     internal void SetFullscreenWarning(bool active){
         if(surface==null)return;
@@ -1033,6 +1043,7 @@ class Window:LunarForm,IMessageFilter {
 
 static class Program {
     [DllImport("user32.dll")] static extern bool PrintWindow(IntPtr hwnd,IntPtr hdc,uint flags);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
     [STAThread] static int Main(string[] args) {
         ServicePointManager.SecurityProtocol=SecurityProtocolType.Tls12;
         if(args.Length==1&&args[0]=="--apply-update")return LunarUpdates.Apply();
@@ -1060,6 +1071,24 @@ static class Program {
                     File.WriteAllText(Path.ChangeExtension(args[1],".txt"),"before="+a+" | after="+b2+" | wall="+wall.ToString("F2")+" | decoded_fps="+(total/wall).ToString("F1")+" | shown_fps="+((total-dropped)/wall).ToString("F1")+" | dropped="+dropped);}
                 catch(Exception e){File.WriteAllText(Path.ChangeExtension(args[1],".txt"),"before="+a+" | after="+b2+" | "+e.Message);}
                 using(var b=new Bitmap(form.Width,form.Height)){using(var g=Graphics.FromImage(b)){var hdc=g.GetHdc();try{PrintWindow(form.Handle,hdc,2);}finally{g.ReleaseHdc(hdc);}}b.Save(args[1]);}
+            }
+            return 0;
+        }
+        if(args.Length==2 && args[0]=="--test-alert") {
+            using(var window=new Window(true)){
+                Action<double> pump=seconds=>{var stop=DateTime.UtcNow.AddSeconds(seconds);while(DateTime.UtcNow<stop){Application.DoEvents();System.Threading.Thread.Sleep(15);}};
+                window.Show();pump(1);window.Hide();pump(.5); // like Lunar sitting in the tray during a game
+                window.AlertFullscreen();pump(2);
+                var screen=Screen.PrimaryScreen.Bounds;
+                using(var b=new Bitmap(screen.Width,screen.Height)){using(var g=Graphics.FromImage(b))g.CopyFromScreen(screen.Location,Point.Empty,screen.Size);b.Save(args[1]);}
+                Console.WriteLine("after alert: visible="+window.Visible+" state="+window.WindowState+" alert="+TaskbarAlert.Active);
+                TaskbarAlert.ShowRestored(window);pump(1.5); // what clicking the taskbar button does
+                Console.WriteLine("after click: visible="+window.Visible+" state="+window.WindowState+" bounds="+window.Bounds);
+                window.Hide();pump(.5);
+                Console.WriteLine("after close-to-tray: visible="+window.Visible+" nativeVisible="+IsWindowVisible(window.Handle));
+                window.Show();pump(.5);window.Hide();
+                using(var b=new Bitmap(window.Width,window.Height)){using(var g=Graphics.FromImage(b)){var hdc=g.GetHdc();try{PrintWindow(window.Handle,hdc,2);}finally{g.ReleaseHdc(hdc);}}b.Save(System.IO.Path.ChangeExtension(args[1],".window.png"));}
+                window.Close();
             }
             return 0;
         }

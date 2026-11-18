@@ -535,6 +535,7 @@ sealed class DesktopIntegration:IDisposable {
     void MissOverlay(){
         overlayMissed=true;
         SetFullscreen(true);
+        main.AlertFullscreen();
     }
     void SetFullscreen(bool active){
         if(fullscreenActive==active)return;
@@ -579,7 +580,7 @@ sealed class DesktopIntegration:IDisposable {
         SetFullscreen(fullscreen);
         bool requested=OverlayRequested(pendingMatch,dismissedMatch,interactiveOverlay);
         if(fullscreen){
-            if(requested&&pendingMatch!=""){overlayMissed=true;dismissedMatch=pendingMatch;}
+            if(requested&&pendingMatch!=""){dismissedMatch=pendingMatch;MissOverlay();}
             if(interactiveOverlay)HideOverlay();else HideOverlayWindows();
         }else{
             // Automatic agent-select popup: only after VALORANT has stayed focused for a moment.
@@ -987,7 +988,7 @@ sealed class AgentSelectOverlay:Form {
             PlayerProfile own;
             if(profiles.TryGetValue(snapshot.Self.Id,out own)){
                 var agentStats=new Summary(own.Matches.Where(match=>String.Equals(match.AgentId,snapshot.Self.AgentId,StringComparison.OrdinalIgnoreCase)));
-                if(agentStats.Games>0)agent+="   ·   "+agentStats.Games+" matches   ·   "+StatsMetrics.F(agentStats.WinRate,"%")+" win   ·   "+StatsMetrics.KD(agentStats.Totals)+" K/D   ·   "+StatsMetrics.F(agentStats.Totals.HS,"%")+" HS";
+                if(agentStats.Games>0)agent+="   ·   "+agentStats.Games+(agentStats.Games==1?" match   ·   ":" matches   ·   ")+StatsMetrics.F(agentStats.WinRate,"%")+" win   ·   "+StatsMetrics.KD(agentStats.Totals)+" K/D   ·   "+StatsMetrics.F(agentStats.Totals.HS,"%")+" HS";
             }
         }
         if(agent!=""){
