@@ -279,8 +279,9 @@ partial class RiotReader {
         } catch(ApiFailure error){
             if(!sessionReady&&(error.Code==404||error.Code==401||error.Code==403))
                 throw new InvalidOperationException("Riot Client has not made your store session available. Open VALORANT and visit Daily Store once to save the rotation.");
+            LunarLog.Write("store","storefront failed: HTTP "+error.Code);
             if(error.Code==429)throw new InvalidOperationException("Riot rate limit reached. Try again in a minute.");
-            if(error.Code==401||error.Code==403)throw new InvalidOperationException("Riot rejected the store session. Check that you are signed in to VALORANT and try again.");
+            if(error.Code==400||error.Code==401||error.Code==403||error.Code==404)throw new InvalidOperationException("Sign in to VALORANT to load your daily offers.");
             throw new InvalidOperationException("Riot returned HTTP "+error.Code+" while loading the store.");
         } catch(WebException){
             throw new InvalidOperationException(sessionReady?"Could not connect to the Riot store.":"Could not connect to Riot Client. Open it and sign in.");
@@ -410,6 +411,7 @@ sealed class StoreView:UserControl {
             target.MouseEnter+=delegate{scroll.Focus();};
         }
         viewport.Resize+=delegate{LayoutCanvas();};
+        canvas.RetryRequested+=delegate{nextRequest=DateTime.MinValue;nextLiveRequest=DateTime.MinValue;LoadIfNeeded();};
         VisibleChanged+=delegate{clock.Enabled=!preview&&Visible;};
         clock.Tick+=delegate{canvas.RefreshCountdown();LoadIfNeeded();};
         worker.WorkerReportsProgress=true;
@@ -514,7 +516,7 @@ sealed class StoreView:UserControl {
     }
     public void LoadIfNeeded(){
         if(!Visible||worker.IsBusy||DateTime.UtcNow<nextRequest)return;
-        if(canvas.Data==null)canvas.ShowStatus("Loading your daily offers…");
+        if(canvas.Data==null&&!canvas.ShowingProblem)canvas.ShowStatus("Loading your daily offers…");
         worker.RunWorkerAsync();
     }
     public void CheckOnOpen(){
@@ -635,8 +637,33 @@ sealed class StoreCanvas:Control {
     public void RefreshCountdown(){
         if(Data!=null&&Data.ResetsAt.HasValue&&Width>=245)Invalidate(new Rectangle(RotationBounds.Location,new Size(RotationBounds.Width+1,RotationBounds.Height+1)));
     }
-    public StoreCanvas(){DoubleBuffered=true;ResizeRedraw=true;BackColor=Background;}
-    public void ShowStatus(string message){status=message;Invalidate();}
+    public event Action RetryRequested;
+    readonly SoftButton openClient=new SoftButton{Text="Open Riot Client",Size=new Size(170,38),FlatStyle=FlatStyle.Flat,BackColor=Palette.Accent,ForeColor=Color.White,Font=new Font("Segoe UI",9,FontStyle.Bold),Cursor=Cursors.Hand,TextAlign=ContentAlignment.MiddleCenter,Visible=false};
+    readonly SoftButton retry=new SoftButton{Text="Try again",Size=new Size(130,38),FlatStyle=FlatStyle.Flat,BackColor=Palette.Raised,ForeColor=Palette.Text,Font=new Font("Segoe UI",9,FontStyle.Bold),Cursor=Cursors.Hand,TextAlign=ContentAlignment.MiddleCenter,Visible=false};
+    public StoreCanvas(){
+        DoubleBuffered=true;ResizeRedraw=true;BackColor=Background;
+        foreach(var b in new[]{openClient,retry}){b.FlatAppearance.BorderSize=0;b.SurfaceColor=Panel;Controls.Add(b);}
+        openClient.Click+=delegate{try{RiotReader.OpenClient();openClient.Text="Opening…";}catch(Exception e){LunarLog.Error("store","open Riot Client failed",e);ShowStatus(e.Message);}};
+        retry.Click+=delegate{retry.Text="Checking…";if(RetryRequested!=null)RetryRequested();};
+    }
+    // What the empty store screen should say for a given status message.
+    enum StoreProblem{Loading,ClientClosed,SignIn,Busy,Network,Other}
+    static StoreProblem Classify(string message){
+        string m=message??"";
+        if(m.StartsWith("Loading",StringComparison.Ordinal)||m.StartsWith("Checking",StringComparison.Ordinal)||m=="")return StoreProblem.Loading;
+        if(m.Contains("Open Riot Client and sign in"))return StoreProblem.ClientClosed;
+        if(m.Contains("Sign in")||m.Contains("store session")||m.Contains("VALORANT and visit")||m.Contains("signed in"))return StoreProblem.SignIn;
+        if(m.Contains("rate limit")||m.Contains("Retrying shortly"))return StoreProblem.Busy;
+        if(m.Contains("connect"))return StoreProblem.Network;
+        return StoreProblem.Other;
+    }
+    public void ShowStatus(string message){status=message;retry.Text="Try again";Invalidate();}
+    // While a problem is on screen, background retries keep it there instead of flashing "Loading…".
+    public bool ShowingProblem{get{return Classify(status)!=StoreProblem.Loading;}}
+    void PlaceButton(Control button,bool show,Point at){
+        if(button.Visible!=show)button.Visible=show;
+        if(show&&button.Location!=at)button.Location=at;
+    }
     public void UpdateStore(StoreSnapshot data,string message){
         ReleaseArt();
         Data=data;
@@ -673,15 +700,44 @@ sealed class StoreCanvas:Control {
             :"Your VALORANT skin rotation";
         ProfileCanvas.T(g,subtitle,10,Muted,new Rectangle(left,66,w,27));
         if(Data==null){
-            var empty=new Rectangle(left,120,w,215);
+            var kind=Classify(status);
+            bool steps=kind==StoreProblem.ClientClosed||kind==StoreProblem.SignIn;
+            var empty=new Rectangle(left,120,w,steps?372:276);
             Card(g,empty,16,Panel,Outline);
-            var icon=new Rectangle(empty.X+empty.Width/2-23,empty.Y+32,46,46);
-            Card(g,icon,13,Palette.Raised,Outline);
-            LunarIcons.Draw(g,LunarGlyph.Shop,new Point(icon.X+23,icon.Y+23),Violet,23);
-            Center(g,"Daily offers",14,Palette.Text,new Rectangle(empty.X+16,empty.Y+88,empty.Width-32,30),true);
-            Center(g,status,10,Muted,new Rectangle(empty.X+32,empty.Y+125,empty.Width-64,67),false);
+            var icon=new Rectangle(empty.X+empty.Width/2-27,empty.Y+30,54,54);
+            Color tone=kind==StoreProblem.Busy||kind==StoreProblem.Network?Color.FromArgb(245,190,95):Violet;
+            Card(g,icon,15,Color.FromArgb(40,tone),Color.FromArgb(90,tone));
+            LunarIcons.Draw(g,LunarGlyph.Shop,new Point(icon.X+27,icon.Y+27),tone,26);
+            string title=kind==StoreProblem.Loading?"Daily offers":kind==StoreProblem.ClientClosed?"Riot Client is closed":kind==StoreProblem.SignIn?"Sign in to VALORANT":kind==StoreProblem.Busy?"Riot is busy right now":kind==StoreProblem.Network?"Can't reach Riot":"Daily offers";
+            string body=kind==StoreProblem.ClientClosed?"Your daily offers load here as soon as Riot Client is open and signed in.":
+                kind==StoreProblem.SignIn?"Your store only appears for an account signed in to VALORANT. Open the game once and the offers load here automatically.":
+                kind==StoreProblem.Busy?"Too many requests to Riot. Lunar tries again by itself in a moment.":
+                kind==StoreProblem.Network?"Check your internet connection. Lunar tries again by itself.":status;
+            Center(g,title,15,Palette.Text,new Rectangle(empty.X+16,empty.Y+96,empty.Width-32,30),true);
+            Center(g,body,10,Muted,new Rectangle(empty.X+48,empty.Y+128,empty.Width-96,44),false);
+            int y=empty.Y+186;
+            if(steps){
+                string[] items={"Open Riot Client","Sign in to your account","Open VALORANT (the main menu is enough)"};
+                int listW=Math.Min(360,empty.Width-80),lx=empty.X+(empty.Width-listW)/2;
+                for(int i=0;i<items.Length;i++){
+                    bool done=kind==StoreProblem.SignIn&&i<2;
+                    var dot=new Rectangle(lx,y+i*34+4,22,22);
+                    using(var shape=Skin.Round(dot,11))using(var fill=new SolidBrush(done?Color.FromArgb(46,Palette.Win):Color.FromArgb(46,Violet)))g.FillPath(fill,shape);
+                    Center(g,done?"✓":(i+1).ToString(),8,done?Palette.Win:Violet,dot,true);
+                    ProfileCanvas.T(g,items[i],10,done?Muted:Palette.Text,new Rectangle(lx+34,y+i*34,listW-34,30),!done);
+                }
+                y+=items.Length*34+14;
+            }
+            bool showOpen=kind==StoreProblem.ClientClosed||kind==StoreProblem.SignIn;
+            bool showRetry=kind!=StoreProblem.Loading;
+            int buttonsWidth=(showOpen?openClient.Width+10:0)+(showRetry?retry.Width:0);
+            int bx=empty.X+(empty.Width-buttonsWidth)/2;
+            PlaceButton(openClient,showOpen,new Point(bx,y));
+            PlaceButton(retry,showRetry,new Point(bx+(showOpen?openClient.Width+10:0),y));
+            if(kind!=StoreProblem.Loading)Center(g,"Lunar checks again automatically.",8,Color.FromArgb(120,Muted),new Rectangle(empty.X+16,empty.Bottom-30,empty.Width-32,20),false);
             return;
         }
+        PlaceButton(openClient,false,Point.Empty);PlaceButton(retry,false,Point.Empty);
         if(HasWallet)DrawWallet(g,Stacked?new Rectangle(left,98,w,36):new Rectangle(left,34,w,36),Stacked);
         DrawRotation(g,rotation);
         ProfileCanvas.T(g,"Daily offers",14,Palette.Text,new Rectangle(left,OffersTop,w-220,31),true);
