@@ -95,10 +95,71 @@ static class LunarUpdates {
             }
         }
     }
+    const string LatestApi="https://api.github.com/repos/mucalol640-glitch/Lunar/releases/latest";
+    static string latestTag,latestEtag;
+    // Asks the GitHub API for the newest release tag. Uses ETag: an unchanged answer is a 304, which is fast and does
+    // not count against GitHub's rate limit, so Lunar can check every few minutes. The API is not CDN-cached like the
+    // releases/latest/download redirect, so a new release is seen right away.
+    static async Task<string> LatestTag(CancellationToken cancellation){
+        var request=(HttpWebRequest)WebRequest.Create(LatestApi);
+        request.UserAgent="Lunar Update";
+        request.Accept="application/vnd.github+json";
+        if(latestEtag!=null&&latestTag!=null)request.Headers[HttpRequestHeader.IfNoneMatch]=latestEtag;
+        using(var timeout=CancellationTokenSource.CreateLinkedTokenSource(cancellation)){
+            timeout.CancelAfter(TimeSpan.FromSeconds(30));
+            using(timeout.Token.Register(request.Abort)){
+                try{
+                    using(var response=(HttpWebResponse)await request.GetResponseAsync().ConfigureAwait(false))
+                    using(var reader=new StreamReader(response.GetResponseStream(),Encoding.UTF8)){
+                        string json=await reader.ReadToEndAsync().ConfigureAwait(false);
+                        if(json.Length>256*1024)throw new InvalidDataException("Invalid release response.");
+                        string tag=Json.S(Json.Codec.DeserializeObject(json),"tag_name");
+                        if(!Regex.IsMatch(tag,@"\Av\d+\.\d+(\.\d+)?\z"))throw new InvalidDataException("Invalid release tag.");
+                        latestTag=tag;latestEtag=response.Headers[HttpResponseHeader.ETag];
+                        return tag;
+                    }
+                }catch(WebException error){
+                    var response=error.Response as HttpWebResponse;
+                    if(response!=null&&response.StatusCode==HttpStatusCode.NotModified&&latestTag!=null){response.Close();return latestTag;}
+                    if(response!=null)response.Close();
+                    throw;
+                }
+            }
+        }
+    }
+    // Diagnostics: "--update-probe" prints what the update check sees (does not download or apply anything).
+    internal static int Probe(){
+        try{
+            System.Net.ServicePointManager.SecurityProtocol|=SecurityProtocolType.Tls12;
+            var clock=Stopwatch.StartNew();
+            string first=LatestTag(CancellationToken.None).GetAwaiter().GetResult();
+            Console.WriteLine("latest="+first+" etag="+(latestEtag??"-")+" in "+clock.ElapsedMilliseconds+" ms");
+            clock.Restart();
+            string second=LatestTag(CancellationToken.None).GetAwaiter().GetResult();
+            Console.WriteLine("again="+second+" (cached via ETag) in "+clock.ElapsedMilliseconds+" ms");
+            Console.WriteLine("current="+DisplayVersion+" newer="+(Normalize(new Version(second.Substring(1)))>Normalize(CurrentVersion)));
+            var staged=Prepare(CancellationToken.None).GetAwaiter().GetResult();
+            Console.WriteLine("prepare="+(staged??"nothing newer"));
+            return 0;
+        }catch(Exception e){Console.WriteLine("error: "+e.Message);return 1;}
+    }
+    static Version Normalize(Version v){return new Version(v.Major,v.Minor,Math.Max(0,v.Build),Math.Max(0,v.Revision));}
     internal static async Task<string> Prepare(CancellationToken cancellation){
+        string manifestUrl;
+        try{
+            string tag=await LatestTag(cancellation).ConfigureAwait(false);
+            Version tagged;
+            // Nothing newer: stop here without downloading anything else.
+            if(Version.TryParse(tag.Substring(1),out tagged)&&Normalize(tagged)<=Normalize(CurrentVersion))return null;
+            manifestUrl=Feed+"/download/"+tag+"/lunar-update.json";
+        }catch(OperationCanceledException){throw;}
+        catch(Exception){
+            // API unavailable or rate-limited: fall back to the latest redirect, with a cache-buster.
+            manifestUrl=Feed+"/latest/download/lunar-update.json?t="+DateTime.UtcNow.Ticks;
+        }
         byte[] bytes;
         using(var buffer=new MemoryStream()){
-            await Download(Feed+"/latest/download/lunar-update.json",buffer,MaxManifest,cancellation).ConfigureAwait(false);
+            await Download(manifestUrl,buffer,MaxManifest,cancellation).ConfigureAwait(false);
             bytes=buffer.ToArray();
         }
         var package=VerifyManifest(bytes,IsInstalled(Application.ExecutablePath));

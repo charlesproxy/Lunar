@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 [assembly: System.Reflection.AssemblyTitle("Lunar")]
 [assembly: System.Reflection.AssemblyProduct("Lunar")]
-[assembly: System.Reflection.AssemblyFileVersion("1.84.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.85.0.0")]
 
 namespace Lunar {
 static class Json {
@@ -1049,6 +1049,7 @@ static class Program {
         if(args.Length==1&&args[0]=="--apply-update")return LunarUpdates.Apply();
         if(args.Contains("--self-test")) {SearchChecks.Run();Tests.Run();HistoryChecks.Run();RiotStatsChecks.Run();return ProfileChecks.Run();}
         if(args.Contains("--language-test"))return LunarLanguage.Run();
+        if(args.Contains("--update-probe"))return LunarUpdates.Probe();
         if(args.Contains("--probe")) {var s=new RiotReader().Poll();Console.WriteLine(s.Status+" | "+s.Detail);return 0;}
         Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
         if(args.Length==2 && args[0]=="--render-skeleton") {
