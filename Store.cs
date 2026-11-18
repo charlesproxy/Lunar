@@ -411,6 +411,7 @@ sealed class StoreView:UserControl {
             target.MouseEnter+=delegate{scroll.Focus();};
         }
         viewport.Resize+=delegate{LayoutCanvas();};
+        canvas.LayoutChanged+=delegate{LayoutCanvas();};
         canvas.RetryRequested+=delegate{nextRequest=DateTime.MinValue;nextLiveRequest=DateTime.MinValue;LoadIfNeeded();};
         VisibleChanged+=delegate{clock.Enabled=!preview&&Visible;};
         clock.Tick+=delegate{canvas.RefreshCountdown();LoadIfNeeded();};
@@ -643,7 +644,11 @@ sealed class StoreCanvas:Control {
     public StoreCanvas(){
         DoubleBuffered=true;ResizeRedraw=true;BackColor=Background;
         foreach(var b in new[]{openClient,retry}){b.FlatAppearance.BorderSize=0;b.SurfaceColor=Panel;Controls.Add(b);}
-        openClient.Click+=delegate{try{RiotReader.OpenClient();openClient.Text="Opening…";}catch(Exception e){LunarLog.Error("store","open Riot Client failed",e);ShowStatus(e.Message);}};
+        openClient.Click+=delegate{
+            bool game=Classify(status)==StoreProblem.SignIn;
+            try{if(game)RiotReader.OpenValorant();else RiotReader.OpenClient();openClient.Text="Opening…";}
+            catch(Exception e){LunarLog.Error("store","open "+(game?"VALORANT":"Riot Client")+" failed",e);ShowStatus(e.Message);}
+        };
         retry.Click+=delegate{retry.Text="Checking…";if(RetryRequested!=null)RetryRequested();};
     }
     // What the empty store screen should say for a given status message.
@@ -657,7 +662,8 @@ sealed class StoreCanvas:Control {
         if(m.Contains("connect"))return StoreProblem.Network;
         return StoreProblem.Other;
     }
-    public void ShowStatus(string message){status=message;retry.Text="Try again";Invalidate();}
+    public event Action LayoutChanged;
+    public void ShowStatus(string message){int before=HeightForLayout();status=message;retry.Text="Try again";if(HeightForLayout()!=before&&LayoutChanged!=null)LayoutChanged();Invalidate();}
     // While a problem is on screen, background retries keep it there instead of flashing "Loading…".
     public bool ShowingProblem{get{return Classify(status)!=StoreProblem.Loading;}}
     void PlaceButton(Control button,bool show,Point at){
@@ -677,7 +683,8 @@ sealed class StoreCanvas:Control {
         ShowStatus(message);
     }
     public int HeightForLayout(){
-        if(Data==null)return 388;
+        // Empty state: card starts at 120 and is 276 px (372 with the step list) tall, plus a bottom margin.
+        if(Data==null)return 120+(Classify(status)==StoreProblem.ClientClosed||Classify(status)==StoreProblem.SignIn?372:276)+40;
         int tiles=(Offers.Length+1)/2;
         int offerHeight=tiles==0?95:tiles*(TileHeight+Gap)-Gap;
         int bundleHeight=Bundles.Length==0?0:58+Bundles.Length*(BundleHeight+12)-12;
@@ -729,6 +736,9 @@ sealed class StoreCanvas:Control {
                 y+=items.Length*34+14;
             }
             bool showOpen=kind==StoreProblem.ClientClosed||kind==StoreProblem.SignIn;
+            // Riot Client is already open and signed in for SignIn: the next step is the game itself.
+            string openText=kind==StoreProblem.SignIn?"Open VALORANT":"Open Riot Client";
+            if(openClient.Tag as string!=openText){openClient.Tag=openText;openClient.Text=LunarLanguage.Translate(openText);}
             bool showRetry=kind!=StoreProblem.Loading;
             int buttonsWidth=(showOpen?openClient.Width+10:0)+(showRetry?retry.Width:0);
             int bx=empty.X+(empty.Width-buttonsWidth)/2;

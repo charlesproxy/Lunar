@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 [assembly: System.Reflection.AssemblyTitle("Lunar")]
 [assembly: System.Reflection.AssemblyProduct("Lunar")]
-[assembly: System.Reflection.AssemblyFileVersion("1.99.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("2.0.0.0")]
 
 namespace Lunar {
 static class Json {
@@ -1136,7 +1136,7 @@ static class Program {
         }
         if(args.Length==3 && args[0]=="--render-store-empty") {
             using(var form=new Form{ClientSize=new Size(980,620),BackColor=Palette.Bg,StartPosition=FormStartPosition.Manual,Location=new Point(-3000,0)}){
-                var canvas=new StoreCanvas{Dock=DockStyle.Fill};form.Controls.Add(canvas);LunarLanguage.Attach(form);form.Show();canvas.ShowStatus(args[2]);
+                var canvas=new StoreCanvas{Location=Point.Empty,Width=980};form.Controls.Add(canvas);LunarLanguage.Attach(form);form.Show();canvas.ShowStatus(args[2]);canvas.Height=canvas.HeightForLayout();
                 var stop=DateTime.UtcNow.AddSeconds(.8);while(DateTime.UtcNow<stop){Application.DoEvents();System.Threading.Thread.Sleep(15);}
                 using(var b=new Bitmap(form.ClientSize.Width,form.ClientSize.Height)){using(var g=Graphics.FromImage(b)){var hdc=g.GetHdc();try{PrintWindow(form.Handle,hdc,1);}finally{g.ReleaseHdc(hdc);}}b.Save(args[1]);}
             }
