@@ -13,7 +13,7 @@ $release = $v.ToString($(if ($v.Build -le 0) { 2 } else { 3 }))
 $fileVersion = "$($v.Major).$($v.Minor).$([Math]::Max($v.Build,0)).0"
 
 if (!(Get-Command gh -ErrorAction SilentlyContinue)) { throw 'GitHub CLI (gh) is required.' }
-gh auth status -h github.com | Out-Null
+gh auth status -h github.com --active | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Run "gh auth login" first.' }
 
 # 1. Stamp the version into the source.
