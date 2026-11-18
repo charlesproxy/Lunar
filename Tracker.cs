@@ -100,7 +100,7 @@ sealed class NavButton:Button {
                 g.DrawLine(pen,5,Height/2-7,5,Height/2+7);
         }
         LunarIcons.Draw(g,glyph,new Point(24,Height/2),active?Palette.Accent:Palette.Muted);
-        TextRenderer.DrawText(g,Text,Font,new Rectangle(42,0,Width-46,Height),active?Color.White:Palette.Text,
+        LunarText.DrawText(g,Text,Font,new Rectangle(42,0,Width-46,Height),active?Color.White:Palette.Text,
             TextFormatFlags.VerticalCenter|TextFormatFlags.EndEllipsis|TextFormatFlags.NoPrefix);
     }
 }
@@ -110,7 +110,7 @@ class SoftButton:Button {
  public SoftButton(){SetStyle(ControlStyles.UserPaint|ControlStyles.AllPaintingInWmPaint|ControlStyles.OptimizedDoubleBuffer,true);}
  protected override void OnMouseEnter(EventArgs e){hover=true;Invalidate();base.OnMouseEnter(e);}
  protected override void OnMouseLeave(EventArgs e){hover=false;Invalidate();base.OnMouseLeave(e);}
- protected override void OnPaint(PaintEventArgs e){var g=e.Graphics;g.SmoothingMode=SmoothingMode.AntiAlias;g.Clear(SurfaceColor??(Parent==null?Palette.Bg:Parent.BackColor));using(var p=Skin.Round(new Rectangle(0,0,Width-1,Height-1),10))using(var b=new SolidBrush(hover?ControlPaint.Light(BackColor,.15f):BackColor)){g.FillPath(b,p);if(Focused)using(var pen=new Pen(Palette.Accent))g.DrawPath(pen,p);}var r=new Rectangle(12,0,Width-24,Height);var flags=TextFormatFlags.VerticalCenter|TextFormatFlags.EndEllipsis|TextFormatFlags.NoPrefix;if(TextAlign==ContentAlignment.MiddleCenter)flags|=TextFormatFlags.HorizontalCenter;TextRenderer.DrawText(g,Text,Font,r,Enabled?ForeColor:Palette.Muted,flags);}
+ protected override void OnPaint(PaintEventArgs e){var g=e.Graphics;g.SmoothingMode=SmoothingMode.AntiAlias;g.Clear(SurfaceColor??(Parent==null?Palette.Bg:Parent.BackColor));using(var p=Skin.Round(new Rectangle(0,0,Width-1,Height-1),10))using(var b=new SolidBrush(hover?ControlPaint.Light(BackColor,.15f):BackColor)){g.FillPath(b,p);if(Focused)using(var pen=new Pen(Palette.Accent))g.DrawPath(pen,p);}var r=new Rectangle(12,0,Width-24,Height);var flags=TextFormatFlags.VerticalCenter|TextFormatFlags.EndEllipsis|TextFormatFlags.NoPrefix;if(TextAlign==ContentAlignment.MiddleCenter)flags|=TextFormatFlags.HorizontalCenter;LunarText.DrawText(g,Text,Font,r,Enabled?ForeColor:Palette.Muted,flags);}
 }
 class SoftSelect:Control {
  public readonly List<object> Items=new List<object>();int selected=-1;bool hover;SelectMenu menu;
@@ -122,7 +122,7 @@ class SoftSelect:Control {
  protected override void OnMouseLeave(EventArgs e){hover=false;Invalidate();base.OnMouseLeave(e);}
  protected override void OnGotFocus(EventArgs e){Invalidate();base.OnGotFocus(e);}
  protected override void OnLostFocus(EventArgs e){Invalidate();base.OnLostFocus(e);}
- protected override void OnPaint(PaintEventArgs e){var g=e.Graphics;g.SmoothingMode=SmoothingMode.AntiAlias;g.Clear(Parent==null?Palette.Bg:Parent.BackColor);using(var path=Skin.Round(new Rectangle(0,0,Width-1,Height-1),10))using(var b=new SolidBrush(hover?Color.FromArgb(29,26,35):Palette.Panel))using(var pen=new Pen(Focused?Palette.Accent:Palette.Border)){g.FillPath(b,path);g.DrawPath(pen,path);}TextRenderer.DrawText(g,Convert.ToString(SelectedItem),Font,new Rectangle(12,0,Width-38,Height),ForeColor,TextFormatFlags.VerticalCenter|TextFormatFlags.EndEllipsis|TextFormatFlags.NoPrefix);using(var pen=new Pen(Palette.Muted,1.5f))g.DrawLines(pen,new[]{new Point(Width-23,Height/2-2),new Point(Width-18,Height/2+3),new Point(Width-13,Height/2-2)});}
+ protected override void OnPaint(PaintEventArgs e){var g=e.Graphics;g.SmoothingMode=SmoothingMode.AntiAlias;g.Clear(Parent==null?Palette.Bg:Parent.BackColor);using(var path=Skin.Round(new Rectangle(0,0,Width-1,Height-1),10))using(var b=new SolidBrush(hover?Color.FromArgb(29,26,35):Palette.Panel))using(var pen=new Pen(Focused?Palette.Accent:Palette.Border)){g.FillPath(b,path);g.DrawPath(pen,path);}LunarText.DrawText(g,Convert.ToString(SelectedItem),Font,new Rectangle(12,0,Width-38,Height),ForeColor,TextFormatFlags.VerticalCenter|TextFormatFlags.EndEllipsis|TextFormatFlags.NoPrefix);using(var pen=new Pen(Palette.Muted,1.5f))g.DrawLines(pen,new[]{new Point(Width-23,Height/2-2),new Point(Width-18,Height/2+3),new Point(Width-13,Height/2-2)});}
  protected override void OnClick(EventArgs e){base.OnClick(e);Focus();OpenMenu();}
  protected override bool IsInputKey(Keys keyData){return keyData==Keys.Up||keyData==Keys.Down||base.IsInputKey(keyData);}
  protected override void OnKeyDown(KeyEventArgs e){base.OnKeyDown(e);if(e.KeyCode==Keys.Enter||e.KeyCode==Keys.Space||e.KeyCode==Keys.F4){OpenMenu();e.Handled=true;}else if(e.KeyCode==Keys.Down||e.KeyCode==Keys.Up){SelectedIndex=Math.Max(0,Math.Min(Items.Count-1,selected+(e.KeyCode==Keys.Down?1:-1)));e.Handled=true;}}
@@ -263,8 +263,8 @@ sealed class SelectMenu:ToolStripDropDown {
                     using(var brush=new SolidBrush(active?Palette.AccentSoft:Palette.Raised))
                         g.FillPath(brush,path);
                 }
-                TextRenderer.DrawText(g,Convert.ToString(items[index]),Font,new Rectangle(11,y,Width-52,rowHeight),index==applied?Palette.Accent:Palette.Text,flags);
-                if(index==applied)TextRenderer.DrawText(g,"✓",Font,new Rectangle(Width-28,y,19,rowHeight),Palette.Accent,flags);
+                LunarText.DrawText(g,Convert.ToString(items[index]),Font,new Rectangle(11,y,Width-52,rowHeight),index==applied?Palette.Accent:Palette.Text,flags);
+                if(index==applied)LunarText.DrawText(g,"✓",Font,new Rectangle(Width-28,y,19,rowHeight),Palette.Accent,flags);
             }
             if(items.Length>rows){
                 int thumb=Math.Max(15,(Height-4)*rows/items.Length);
@@ -333,8 +333,11 @@ sealed class RiotIdInput:TextBox {
 
     protected override void OnHandleCreated(EventArgs e){
         base.OnHandleCreated(e);
-        SendMessage(Handle,SetCueBanner,new IntPtr(1),cue);
+        ApplyCue();
+        LunarLanguage.Changed+=ApplyCue;
     }
+    protected override void OnHandleDestroyed(EventArgs e){LunarLanguage.Changed-=ApplyCue;base.OnHandleDestroyed(e);}
+    void ApplyCue(){if(IsHandleCreated)SendMessage(Handle,SetCueBanner,new IntPtr(1),LunarLanguage.Translate(cue));}
 }
 class SearchView:UserControl {
     readonly SearchField field=new SearchField();
@@ -531,7 +534,7 @@ class SearchView:UserControl {
         var g=e.Graphics;
         g.SmoothingMode=SmoothingMode.AntiAlias;
         DrawTitle(g);
-        TextRenderer.DrawText(g,"View rank, stats, and recent matches by Riot ID.",
+        LunarText.DrawText(g,"View rank, stats, and recent matches by Riot ID.",
             subtitleFont,new Rectangle(20,introY+64,Width-40,32),Color.FromArgb(185,173,200),
             TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);
         ProfileCanvas.T(g,"Riot ID",9,Palette.Muted,new Rectangle(field.Left+2,introY+102,140,21),true);
@@ -552,11 +555,11 @@ class SearchView:UserControl {
     void DrawTitle(Graphics g){
         const TextFormatFlags flags=TextFormatFlags.NoPadding|TextFormatFlags.SingleLine|TextFormatFlags.NoPrefix|TextFormatFlags.VerticalCenter;
         const string first="Search by ", last="Riot ID";
-        int a=TextRenderer.MeasureText(g,first,titleFont,Size.Empty,flags).Width;
-        int b=TextRenderer.MeasureText(g,last,titleFont,Size.Empty,flags).Width;
+        int a=LunarText.MeasureText(g,first,titleFont,Size.Empty,flags).Width;
+        int b=LunarText.MeasureText(g,last,titleFont,Size.Empty,flags).Width;
         int x=(Width-a-b)/2;
-        TextRenderer.DrawText(g,first,titleFont,new Rectangle(x,introY,a+2,60),Palette.Text,flags);
-        TextRenderer.DrawText(g,last,titleFont,new Rectangle(x+a,introY,b+2,60),Palette.Cyan,flags);
+        LunarText.DrawText(g,first,titleFont,new Rectangle(x,introY,a+2,60),Palette.Text,flags);
+        LunarText.DrawText(g,last,titleFont,new Rectangle(x+a,introY,b+2,60),Palette.Cyan,flags);
     }
     protected override void Dispose(bool disposing){
         if(disposing){worker.Dispose();titleFont.Dispose();subtitleFont.Dispose();}

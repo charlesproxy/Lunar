@@ -49,9 +49,8 @@ sealed class SettingsSurface:Panel {
         base.OnPaint(e);
         var g=e.Graphics;
         g.SmoothingMode=SmoothingMode.AntiAlias;
-        bool pt=LunarLanguage.Portuguese;
-        ProfileCanvas.T(g,pt?"Configurações":"Settings",24,Palette.Text,new Rectangle(Left0,26,ClientSize.Width-68,46),true);
-        ProfileCanvas.T(g,pt?"Preferências do Lunar":"Lunar preferences",9,Palette.Muted,new Rectangle(Left0+2,70,ClientSize.Width-72,24));
+        ProfileCanvas.T(g,"Settings",24,Palette.Text,new Rectangle(Left0,26,ClientSize.Width-68,46),true);
+        ProfileCanvas.T(g,"Lunar preferences",9,Palette.Muted,new Rectangle(Left0+2,70,ClientSize.Width-72,24));
         foreach(var card in Cards){
             var r=card.Bounds;
             if(r.Width<=0)continue;
@@ -65,11 +64,11 @@ sealed class SettingsSurface:Panel {
             DrawGlyph(g,card.Glyph,new Point(tile.X+22,tile.Y+22));
             if(card.Badge!=null){
                 using(var font=new Font("Segoe UI",8,FontStyle.Bold)){
-                    int titleWidth=TextRenderer.MeasureText(g,card.Title.Text,card.Title.Font).Width;
-                    int w=TextRenderer.MeasureText(g,card.Badge,font).Width+10;
+                    int titleWidth=LunarText.MeasureText(g,card.Title.Text,card.Title.Font).Width;
+                    int w=LunarText.MeasureText(g,card.Badge,font).Width+10;
                     var pill=new Rectangle(card.Title.Left+titleWidth+6,card.Title.Top+3,w,19);
                     using(var shape=Skin.Round(pill,6))using(var fill=new SolidBrush(Color.FromArgb(40,Palette.Accent)))g.FillPath(fill,shape);
-                    TextRenderer.DrawText(g,card.Badge,font,pill,Palette.Cyan,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPadding);
+                    LunarText.DrawText(g,card.Badge,font,pill,Palette.Cyan,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPadding);
                 }
             }
             if(card.Keys!=null){
@@ -83,7 +82,7 @@ sealed class SettingsSurface:Panel {
     static int KeycapsWidth(string keys){
         int width=0;
         using(var font=new Font("Segoe UI",9,FontStyle.Bold))
-            foreach(string part in Split(keys))width+=Math.Max(30,TextRenderer.MeasureText(part.Trim(),font).Width+16)+(width>0?18:0);
+            foreach(string part in Split(keys))width+=Math.Max(30,LunarText.MeasureText(part.Trim(),font).Width+16)+(width>0?18:0);
         return width;
     }
     static void DrawKeycaps(Graphics g,string keys,Point origin){
@@ -92,14 +91,14 @@ sealed class SettingsSurface:Panel {
         using(var plus=new Font("Segoe UI",9))
             foreach(string raw in Split(keys)){
                 string part=raw.Trim();
-                if(!first){TextRenderer.DrawText(g,"+",plus,new Rectangle(x,origin.Y,18,30),Palette.Muted,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);x+=18;}
-                int w=Math.Max(30,TextRenderer.MeasureText(part,font).Width+16);
+                if(!first){LunarText.DrawText(g,"+",plus,new Rectangle(x,origin.Y,18,30),Palette.Muted,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);x+=18;}
+                int w=Math.Max(30,LunarText.MeasureText(part,font).Width+16);
                 var cap=new Rectangle(x,origin.Y,w,30);
                 using(var shape=Skin.Round(cap,7))
                 using(var fill=new SolidBrush(Palette.Raised))
                 using(var edge=new Pen(Palette.Border)){g.FillPath(fill,shape);g.DrawPath(edge,shape);}
                 using(var lip=new Pen(Color.FromArgb(60,0,0,0),2f))g.DrawLine(lip,cap.X+5,cap.Bottom-1,cap.Right-5,cap.Bottom-1);
-                TextRenderer.DrawText(g,part,font,cap,Palette.Text,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);
+                LunarText.DrawText(g,part,font,cap,Palette.Text,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);
                 x+=w;first=false;
             }
     }
@@ -153,7 +152,6 @@ sealed class UpdateReadyCard:Control {
             if(slide==0)animation.Stop();
         };
     }
-    bool Pt{get{return LunarLanguage.Portuguese;}}
     Rectangle ButtonBounds{get{return new Rectangle(Width-150,(Height-38)/2+4,132,38);}}
     Rectangle CloseBounds{get{return new Rectangle(Width-26,8,16,16);}}
 
@@ -196,21 +194,21 @@ sealed class UpdateReadyCard:Control {
         }
         // Badge, title, subtitle.
         int x=tile.Right+14;
-        string badge=Pt?"ATUALIZAÇÃO PRONTA":"UPDATE READY";
+        string badge=LunarLanguage.Translate("UPDATE READY");
         using(var badgeFont=new Font("Segoe UI",7,FontStyle.Bold)){
-            var size=TextRenderer.MeasureText(g,badge,badgeFont,Size.Empty,TextFormatFlags.NoPadding);
+            var size=LunarText.MeasureText(g,badge,badgeFont,Size.Empty,TextFormatFlags.NoPadding);
             var pill=new Rectangle(x,15,size.Width+18,19);
             using(var shape=Skin.Round(pill,9))using(var fill=new SolidBrush(Color.FromArgb(70,Glow)))g.FillPath(fill,shape);
             using(var dot=new SolidBrush(Color.FromArgb(120,230,180)))g.FillEllipse(dot,pill.X+7,pill.Y+7,5,5);
-            TextRenderer.DrawText(g,badge,badgeFont,new Rectangle(pill.X+14,pill.Y,pill.Width-14,pill.Height),Color.FromArgb(232,220,255),
+            LunarText.DrawText(g,badge,badgeFont,new Rectangle(pill.X+14,pill.Y,pill.Width-14,pill.Height),Color.FromArgb(232,220,255),
                 TextFormatFlags.VerticalCenter|TextFormatFlags.Left|TextFormatFlags.NoPrefix);
         }
         int textWidth=ButtonBounds.X-x-8;
-        string title=Version==""?(Pt?"Nova versão do Lunar":"New Lunar version"):"Lunar "+Version;
+        string title=Version==""?LunarLanguage.Translate("New Lunar version"):"Lunar "+Version;
         using(var titleFont=new Font("Segoe UI",11,FontStyle.Bold))
-            TextRenderer.DrawText(g,title,titleFont,new Rectangle(x,36,textWidth,24),Palette.Text,TextFormatFlags.Left|TextFormatFlags.VerticalCenter|TextFormatFlags.EndEllipsis|TextFormatFlags.NoPrefix);
+            LunarText.DrawText(g,title,titleFont,new Rectangle(x,36,textWidth,24),Palette.Text,TextFormatFlags.Left|TextFormatFlags.VerticalCenter|TextFormatFlags.EndEllipsis|TextFormatFlags.NoPrefix);
         using(var subFont=new Font("Segoe UI",8))
-            TextRenderer.DrawText(g,Pt?"Reinicia sozinho em segundos":"Restarts by itself in seconds",subFont,new Rectangle(x,58,textWidth,18),Palette.Muted,
+            LunarText.DrawText(g,"Restarts by itself in seconds",subFont,new Rectangle(x,58,textWidth,18),Palette.Muted,
                 TextFormatFlags.Left|TextFormatFlags.VerticalCenter|TextFormatFlags.EndEllipsis|TextFormatFlags.NoPrefix);
         // Gradient pill button.
         var button=ButtonBounds;
@@ -224,7 +222,7 @@ sealed class UpdateReadyCard:Control {
         using(var fill=new LinearGradientBrush(button,from,to,LinearGradientMode.Horizontal))g.FillPath(fill,shape);
         using(var shine=new Pen(Color.FromArgb(70,255,255,255)))g.DrawLine(shine,button.X+16,button.Y+1,button.Right-16,button.Y+1);
         using(var buttonFont=new Font("Segoe UI",9.5f,FontStyle.Bold))
-            TextRenderer.DrawText(g,Pt?"Atualizar agora":"Update now",buttonFont,button,Color.White,
+            LunarText.DrawText(g,"Update now",buttonFont,button,Color.White,
                 TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);
         // Dismiss ×.
         var close=CloseBounds;

@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 [assembly: System.Reflection.AssemblyTitle("Lunar")]
 [assembly: System.Reflection.AssemblyProduct("Lunar")]
-[assembly: System.Reflection.AssemblyFileVersion("1.81.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.82.0.0")]
 
 namespace Lunar {
 static class Json {
@@ -36,37 +36,6 @@ static class Json {
     }
     public static IEnumerable<object> A(object o) { return (o as object[]) ?? new object[0]; }
     public static bool B(object o,string key) { return Get(o,key) is bool && (bool)Get(o,key); }
-}
-static class LunarLanguage {
-    static readonly string FilePath=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Lunar","language.txt");
-    static readonly Dictionary<string,string> Brazilian=new Dictionary<string,string>(StringComparer.Ordinal){
-        {"Home","Início"},{"Live Match","Partida ao vivo"},{"Friends","Amigos"},{"Tracker","Rastreador"},{"Daily Store","Loja diária"},{"Crosshair","Mira"},{"Settings","Configurações"},
-        {"Competitive","Competitivo"},{"Unrated","Unrated"},{"Swiftplay","Disputa rápida"},{"Spike Rush","Disputa da Spike"},{"Deathmatch","Mata-mata"},{"Team Deathmatch","Mata-mata em equipe"},
-        {"Overview","Visão geral"},{"Matches","Partidas"},{"Agents","Agentes"},{"Maps","Mapas"},{"Search","Buscar"},{"Search by Riot ID","Buscar por Riot ID"},
-        {"View rank, stats, and recent matches by Riot ID.","Veja elo, estatísticas e partidas recentes pelo Riot ID."},{"Recent searches","Pesquisas recentes"},{"No profiles viewed in this session.","Nenhum perfil visualizado nesta sessão."},
-        {"Competitive rank","Elo competitivo"},{"Top agents","Agentes mais usados"},{"Most played maps","Mapas mais jogados"},{"Match history","Histórico de partidas"},{"Competitive summary","Resumo competitivo"},
-        {"Damage / round","Dano por rodada"},{"Headshot %","% de tiros na cabeça"},{"Win rate","Taxa de vitória"},{"Wins","Vitórias"},{"Losses","Derrotas"},
-        {"Your team","Seu time"},{"Enemy team","Time inimigo"},{"Blue team","Time azul"},{"Red team","Time vermelho"},{"PLAYER / AGENT","JOGADOR / AGENTE"},{"Rank unavailable","Elo indisponível"},
-        {"Agent Select","Seleção de agente"},{"DEATHMATCH · PLAYERS","MATA-MATA · JOGADORES"},{"YOUR TEAM","SEU TIME"},{"ENEMY TEAM","TIME INIMIGO"},{"RANK","ELO"},{"PEAK","PICO"},{"RECENT","RECENTE"},
-        {"Daily offers","Ofertas diárias"},{"No daily offers were returned.","Nenhuma oferta diária encontrada."},{"Featured bundles","Pacotes em destaque"},{"Night Market is open","O Mercado Noturno está aberto"},{"BALANCE","SALDO"},
-        {"Save a preset or add your own code.","Salve uma configuração ou adicione seu próprio código."},{"Primary · actual size","Principal · tamanho real"},{"Add crosshair","Adicionar mira"},{"Name","Nome"},{"VALORANT import code","Código de importação do VALORANT"},
-        {"Loading player card…","Carregando cartão do jogador…"},{"Player card unavailable","Cartão do jogador indisponível"},{"Status unavailable","Status indisponível"},
-        {"Waiting for VALORANT","Aguardando o VALORANT"},{"Open VALORANT and enter agent select. Lunar connects automatically.","Abra o VALORANT e entre na seleção de agentes. O Lunar conecta automaticamente."},{"Waiting","Aguardando"},{"In match","Em partida"},{"Update ready","Atualização pronta"},{"Update now","Atualizar agora"},{"Loading…","Carregando…"},{"Loading...","Carregando..."}
-    };
-    static bool portuguese=Load();
-    static bool Load(){try{return String.Equals(File.ReadAllText(FilePath).Trim(),"pt-BR",StringComparison.OrdinalIgnoreCase);}catch{return false;}}
-    public static bool Portuguese{get{return portuguese;}}
-    public static void Set(bool value){
-        portuguese=value;
-        try{Directory.CreateDirectory(Path.GetDirectoryName(FilePath));File.WriteAllText(FilePath,value?"pt-BR":"en-US",new UTF8Encoding(false));}catch(IOException){}catch(UnauthorizedAccessException){}
-    }
-    public static string Text(string english,string brazilian){return portuguese?brazilian:english;}
-    public static string Translate(string text){
-        if(String.IsNullOrEmpty(text))return text;
-        if(portuguese){string translated;return Brazilian.TryGetValue(text,out translated)?translated:text;}
-        foreach(var entry in Brazilian)if(String.Equals(entry.Value,text,StringComparison.Ordinal))return entry.Key;
-        return text;
-    }
 }
 class ApiFailure:Exception {
     public int Code; public ApiFailure(int c):base("HTTP "+c) { Code=c; }
@@ -370,7 +339,7 @@ class TrackerSurface:Control {
         PlayerProfile profile;
         string peak=p!=null&&p.Id!=null&&Profiles.TryGetValue(p.Id,out profile)&&profile.PeakTier>=3
             ?" · Peak: "+RankArt.Name(profile.PeakTier):"";
-        tip.SetToolTip(this,p==null?"":"Click to view match history for "+p.Name+peak);
+        tip.SetToolTip(this,p==null?"":LunarLanguage.Translate("Click to view match history for "+p.Name)+LunarLanguage.Translate(peak));
     }}
     protected override void Dispose(bool disposing){if(disposing){tip.Dispose();if(card!=null)card.Dispose();}base.Dispose(disposing);}
     public Snapshot Data=new Snapshot(); public string Updated="Automatic connection";
@@ -381,7 +350,7 @@ class TrackerSurface:Control {
         Invalidate();
     }
     public TrackerSurface(){DoubleBuffered=true;BackColor=Palette.Bg;ResizeRedraw=true;}
-    void T(Graphics g,string text,float size,Color color,Rectangle r,bool bold=false){using(var f=new Font("Segoe UI",size,bold?FontStyle.Bold:FontStyle.Regular))TextRenderer.DrawText(g,text,f,r,color,TextFormatFlags.EndEllipsis|TextFormatFlags.NoPrefix|TextFormatFlags.VerticalCenter);}
+    void T(Graphics g,string text,float size,Color color,Rectangle r,bool bold=false){using(var f=new Font("Segoe UI",size,bold?FontStyle.Bold:FontStyle.Regular))LunarText.DrawText(g,text,f,r,color,TextFormatFlags.EndEllipsis|TextFormatFlags.NoPrefix|TextFormatFlags.VerticalCenter);}
     System.Drawing.Drawing2D.GraphicsPath Shape(Rectangle r,int radius){var p=new System.Drawing.Drawing2D.GraphicsPath();int d=radius*2;p.AddArc(r.X,r.Y,d,d,180,90);p.AddArc(r.Right-d,r.Y,d,d,270,90);p.AddArc(r.Right-d,r.Bottom-d,d,d,0,90);p.AddArc(r.X,r.Bottom-d,d,d,90,90);p.CloseFigure();return p;}
     void Box(Graphics g,Rectangle r,Color fill,int radius=12){using(var p=Shape(r,radius))using(var b=new SolidBrush(fill))using(var pen=new Pen(Palette.Border)){g.FillPath(b,p);g.DrawPath(pen,p);}}
     void L(Graphics g,int x,int y,int w){using(var pen=new Pen(Palette.Border))g.DrawLine(pen,x,y,x+w,y);}
@@ -908,9 +877,9 @@ class Window:LunarForm,IMessageFilter {
         languageTitle=new Label{Text="Language",AutoSize=false,Size=new Size(360,24),ForeColor=Palette.Text,BackColor=Color.Transparent,Font=labelFont};
         languageDescription=new Label{Text="Choose the language used by Lunar.",AutoSize=false,Size=new Size(380,22),ForeColor=Palette.Muted,BackColor=Color.Transparent,Font=bodyFont};
         languageSelect=new SoftSelect{Size=new Size(230,38),Font=new Font("Segoe UI",10),ForeColor=Palette.Text,BackColor=Palette.Raised};
-        languageSelect.Items.Add("English");languageSelect.Items.Add("Português (Brasil)");
-        languageSelect.SelectedIndex=LunarLanguage.Portuguese?1:0;
-        languageSelect.SelectedIndexChanged+=delegate{if(languageSelect.SelectedIndex>=0){LunarLanguage.Set(languageSelect.SelectedIndex==1);ApplyLanguage();}};
+        foreach(var option in LunarLanguage.Options)languageSelect.Items.Add(option.Name);
+        languageSelect.SelectedIndex=LunarLanguage.Index;
+        languageSelect.SelectedIndexChanged+=delegate{if(languageSelect.SelectedIndex>=0&&languageSelect.SelectedIndex!=LunarLanguage.Index){LunarLanguage.Set(languageSelect.SelectedIndex);ApplyLanguage();}};
         hotkeyTitle=new Label{Text="Live Match hotkey",AutoSize=false,Size=new Size(360,24),ForeColor=Palette.Text,BackColor=Color.Transparent,Font=labelFont};
         hotkeyHelp=new Label{Text="Change the shortcut used to open the live overlay.",AutoSize=false,Size=new Size(380,22),ForeColor=Palette.Muted,BackColor=Color.Transparent,Font=bodyFont};
         hotkeyCurrent=new Label{Text="Current shortcut: "+HotkeyPreference.Current.Display,Visible=false};
@@ -918,11 +887,11 @@ class Window:LunarForm,IMessageFilter {
         changeHotkeyButton.FlatAppearance.BorderSize=0;
         changeHotkeyButton.Click+=delegate{
             string current=desktop==null?HotkeyPreference.Current.Display:desktop.HotkeyDisplay;
-            using(var dialog=new HotkeyCaptureDialog(current,LunarLanguage.Portuguese)){
+            using(var dialog=new HotkeyCaptureDialog(current)){
                 if(dialog.ShowDialog(this)!=DialogResult.OK)return;
                 bool saved=desktop==null?SavePreviewHotkey(dialog.CapturedKey,dialog.CapturedModifiers):desktop.SetHotkey(dialog.CapturedKey,dialog.CapturedModifiers);
-                if(saved){hotkeyCurrent.Text=(LunarLanguage.Portuguese?"Atalho atual: ":"Current shortcut: ")+(desktop==null?HotkeyPreference.Current.Display:desktop.HotkeyDisplay);panel.Invalidate();}
-                else MessageBox.Show(this,LunarLanguage.Portuguese?"Essa combinação já está sendo usada por outro aplicativo.":"That key combination is already in use by another application.","Lunar",MessageBoxButtons.OK,MessageBoxIcon.Information);
+                if(saved){hotkeyCurrent.Text="Current shortcut: "+(desktop==null?HotkeyPreference.Current.Display:desktop.HotkeyDisplay);panel.Invalidate();}
+                else MessageBox.Show(this,LunarLanguage.Translate("That key combination is already in use by another application."),"Lunar",MessageBoxButtons.OK,MessageBoxIcon.Information);
             }
         };
         var updatesTitle=new Label{Text="Updates",AutoSize=false,Size=new Size(360,24),ForeColor=Palette.Text,BackColor=Color.Transparent,Font=labelFont};
@@ -931,11 +900,11 @@ class Window:LunarForm,IMessageFilter {
         checkButton.FlatAppearance.BorderSize=0;
         checkButton.Click+=delegate{
             if(desktop==null)return;
-            if(desktop.UpdateReady){checkButton.Text=LunarLanguage.Portuguese?"Atualização pronta":"Update ready";return;}
+            if(desktop.UpdateReady){checkButton.Text="Update ready";return;}
             desktop.CheckUpdatesNow();
-            checkButton.Text=LunarLanguage.Portuguese?"Verificando…":"Checking…";
+            checkButton.Text="Checking…";
             var reset=new Timer{Interval=4000};
-            reset.Tick+=delegate{reset.Stop();reset.Dispose();if(!checkButton.IsDisposed)checkButton.Text=desktop.UpdateReady?(LunarLanguage.Portuguese?"Atualização pronta":"Update ready"):(LunarLanguage.Portuguese?"Você está atualizado":"You're up to date");};
+            reset.Tick+=delegate{reset.Stop();reset.Dispose();if(!checkButton.IsDisposed)checkButton.Text=desktop.UpdateReady?"Update ready":"You're up to date";};
             reset.Start();
         };
         panel.Cards=new[]{
@@ -950,33 +919,14 @@ class Window:LunarForm,IMessageFilter {
     }
     static bool SavePreviewHotkey(Keys key,Keys modifiers){if(!HotkeyPreference.Valid(key,modifiers))return false;HotkeyPreference.Save(new HotkeyBinding{Key=key,Modifiers=modifiers});return true;}
     void ApplyLanguage(){
-        bool pt=LunarLanguage.Portuguese;
-        if(homeNav!=null)homeNav.Text=pt?"Início":"Home";
-        if(liveNav!=null)liveNav.Text=pt?"Partida ao vivo":"Live Match";
-        if(friendsNav!=null)friendsNav.Text=pt?"Amigos":"Friends";
-        if(trackerNav!=null)trackerNav.Text=pt?"Rastreador":"Tracker";
-        if(storeNav!=null)storeNav.Text=pt?"Loja diária":"Daily Store";
-        if(crosshairNav!=null)crosshairNav.Text=pt?"Mira":"Crosshair";
-        if(settingsNav!=null)settingsNav.Text=pt?"Configurações":"Settings";
-        if(languageTitle!=null)languageTitle.Text=pt?"Idioma":"Language";
-        if(languageDescription!=null)languageDescription.Text=pt?"Escolha o idioma usado pelo Lunar.":"Choose the language used by Lunar.";
-        if(languageHelp!=null)languageHelp.Text=pt?"As atualizações são verificadas automaticamente. Quando houver uma, o botão Atualizar aparecerá no canto inferior direito.":"Updates are checked automatically. When ready, an Update button appears at the bottom right.";
+        // Texts are set in English; LunarLanguage.Attach translates every control (and later changes) automatically.
         if(versionFooter!=null)versionFooter.Text="LUNAR   /   "+LunarUpdates.DisplayVersion;
+        if(hotkeyCurrent!=null)hotkeyCurrent.Text="Current shortcut: "+(desktop==null?HotkeyPreference.Current.Display:desktop.HotkeyDisplay);
+        LunarLanguage.Attach(this);
+        LunarLanguage.RefreshAll(this);
         if(updateNotice!=null)updateNotice.Invalidate();
-        if(hotkeyTitle!=null)hotkeyTitle.Text=pt?"Atalho da Partida ao vivo":"Live Match hotkey";
-        if(hotkeyCurrent!=null)hotkeyCurrent.Text=(pt?"Atalho atual: ":"Current shortcut: ")+(desktop==null?HotkeyPreference.Current.Display:desktop.HotkeyDisplay);
-        if(hotkeyHelp!=null)hotkeyHelp.Text=pt?"Altere o atalho que abre o painel da partida ao vivo.":"Change the shortcut used to open the live overlay.";
-        if(changeHotkeyButton!=null)changeHotkeyButton.Text=pt?"Alterar atalho":"Change hotkey";
-        if(settingsView!=null)foreach(Control c in settingsView.Controls){if(c.Text=="Updates"||c.Text=="Atualizações")c.Text=pt?"Atualizações":"Updates";else if(c.Text=="Check now"||c.Text=="Verificar agora")c.Text=pt?"Verificar agora":"Check now";}
-        ApplyControlLanguage(this);
         if(languageSelect!=null)languageSelect.Invalidate();
         if(settingsView!=null)settingsView.Invalidate();
-    }
-    static void ApplyControlLanguage(Control root){
-        foreach(Control child in root.Controls){
-            if(!(child is SoftSelect)&&!String.IsNullOrEmpty(child.Text))child.Text=LunarLanguage.Translate(child.Text);
-            ApplyControlLanguage(child);
-        }
     }
     void ShowSettings(){ShowPage(settingsView,settingsNav);}    public void ShowStore(){ShowPage(storeView,storeNav);}
     public void ShowFriends(){ShowPage(friendsView,friendsNav);}
@@ -1051,6 +1001,7 @@ static class Program {
         ServicePointManager.SecurityProtocol=SecurityProtocolType.Tls12;
         if(args.Length==1&&args[0]=="--apply-update")return LunarUpdates.Apply();
         if(args.Contains("--self-test")) {SearchChecks.Run();Tests.Run();HistoryChecks.Run();RiotStatsChecks.Run();return ProfileChecks.Run();}
+        if(args.Contains("--language-test"))return LunarLanguage.Run();
         if(args.Contains("--probe")) {var s=new RiotReader().Poll();Console.WriteLine(s.Status+" | "+s.Detail);return 0;}
         Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
         if(args.Length==2 && args[0]=="--render-skeleton") {

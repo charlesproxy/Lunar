@@ -572,7 +572,7 @@ sealed class FriendsView:UserControl {
         if(!list.Visible){
             string empty=message!=""?message:snapshot==null||snapshot.Players.Length==0?"No friends on this account.":"No friends match your search.";
             using(var font=new Font("Segoe UI",10))
-                TextRenderer.DrawText(g,empty,font,new Rectangle(rail.X+17,rail.Y+75,rail.Width-34,74),Palette.Muted,
+                LunarText.DrawText(g,empty,font,new Rectangle(rail.X+17,rail.Y+75,rail.Width-34,74),Palette.Muted,
                     TextFormatFlags.WordBreak|TextFormatFlags.NoPrefix);
         }
         var selected=list.Selected;
@@ -618,7 +618,7 @@ sealed class FriendsView:UserControl {
     }
     static void Center(Graphics g,string text,int size,Color color,Rectangle rect,bool bold){
         using(var font=new Font("Segoe UI",size,bold?FontStyle.Bold:FontStyle.Regular))
-            TextRenderer.DrawText(g,text??"",font,rect,color,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|
+            LunarText.DrawText(g,text??"",font,rect,color,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|
                 TextFormatFlags.WordBreak|TextFormatFlags.NoPrefix);
     }
     void DrawAvatar(Graphics g,Player player,Rectangle avatar){

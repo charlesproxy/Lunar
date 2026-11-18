@@ -40,6 +40,10 @@ The app checks the signed GitHub update feed every three hours. It verifies the 
 
 Tracker searches reuse a signed-in Riot Client session automatically and do not prompt for pasted credentials. The user still needs to be signed in to Riot Client for Riot to authorize profile requests.
 
+## Languages
+
+Lunar ships in English, Português (Brasil), Español, Français, Deutsch, Türkçe and Русский (Settings → Language). The code uses English text; translations live in `assets/translations-*.json` (`"English": [pt-BR, es-ES, fr-FR, de-DE, tr-TR, ru-RU]`) and are embedded in the EXE. Keys may use `{0}`/`{1}` placeholders for numbers, names and ranks (`"{0} matches"`). To add a language, add its code to `languages` and one more value to every row. Run `Lunar-<version>.exe --language-test` to check translations.
+
 ## Publishing an update
 
 Run `powershell -ExecutionPolicy Bypass -File .\release.ps1 -Version 1.80 -Notes "what changed"`. It sets the version, builds, runs the self-test, signs `lunar-update.json`, packs the executable as `Lunar-<version>.zip`, commits, pushes and creates the GitHub release `v<version>` in `mucalol640-glitch/Lunar`. No raw `.exe` and no `.msi` is uploaded to GitHub: the app downloads the zip, extracts the executable and verifies its signed SHA-256 before applying. The MSI (`build-installer.ps1`) is distributed separately and is installed only once.

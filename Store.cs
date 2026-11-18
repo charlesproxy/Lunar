@@ -669,7 +669,7 @@ sealed class StoreCanvas:Control {
         }
         videoHits.Clear();
         ProfileCanvas.T(g,"Daily Store",25,Palette.Text,new Rectangle(left,23,w,48),true);
-        string subtitle=Data!=null&&Data.IsSaved?"Saved "+Data.SavedAt.ToLocalTime().ToString("MMM d · HH:mm",CultureInfo.InvariantCulture)
+        string subtitle=Data!=null&&Data.IsSaved?"Saved "+Data.SavedAt.ToLocalTime().ToString("MMM d, HH:mm",LunarLanguage.Culture)
             :"Your VALORANT skin rotation";
         ProfileCanvas.T(g,subtitle,10,Muted,new Rectangle(left,66,w,27));
         if(Data==null){
@@ -688,7 +688,7 @@ sealed class StoreCanvas:Control {
         long total=Offers.Where(o=>o.Price>0).Sum(o=>o.Price);
         string count=Offers.Length+" offers"+(total>0?"  ·  "+total.ToString("N0",CultureInfo.InvariantCulture)+" VP total":"");
         using(var font=new Font("Segoe UI",9))
-            TextRenderer.DrawText(g,count,font,new Rectangle(left+w-260,OffersTop,260,31),Muted,
+            LunarText.DrawText(g,count,font,new Rectangle(left+w-260,OffersTop,260,31),Muted,
                 TextFormatFlags.Right|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);
         int top=OffersTop+44;
         if(Offers.Length==0){
@@ -707,7 +707,7 @@ sealed class StoreCanvas:Control {
         if(Bundles.Length>0){
             ProfileCanvas.T(g,"Featured bundles",14,Palette.Text,new Rectangle(left,top+20,w-120,31),true);
             using(var font=new Font("Segoe UI",9))
-                TextRenderer.DrawText(g,Bundles.Length==1?"1 bundle":Bundles.Length+" bundles",font,new Rectangle(left+w-120,top+20,120,31),Muted,
+                LunarText.DrawText(g,Bundles.Length==1?"1 bundle":Bundles.Length+" bundles",font,new Rectangle(left+w-120,top+20,120,31),Muted,
                     TextFormatFlags.Right|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);
             top+=58;
             foreach(var bundle in Bundles){
@@ -725,8 +725,8 @@ sealed class StoreCanvas:Control {
         using(var bold=new Font("Segoe UI",10,FontStyle.Bold))
         using(var small=new Font("Segoe UI",8,FontStyle.Bold))
             foreach(var balance in Data.Balances){
-                int width=14+18+7+TextRenderer.MeasureText(g,balance.Amount.ToString("N0",CultureInfo.InvariantCulture),bold).Width
-                    +TextRenderer.MeasureText(g,balance.Code,small).Width+10;
+                int width=14+18+7+LunarText.MeasureText(g,balance.Amount.ToString("N0",CultureInfo.InvariantCulture),bold).Width
+                    +LunarText.MeasureText(g,balance.Code,small).Width+10;
                 chips.Add(new KeyValuePair<StoreBalance,int>(balance,width));
                 totalWidth+=width+chipGap;
             }
@@ -739,9 +739,9 @@ sealed class StoreCanvas:Control {
             string amount=chip.Key.Amount.ToString("N0",CultureInfo.InvariantCulture);
             using(var bold=new Font("Segoe UI",10,FontStyle.Bold))
             using(var small=new Font("Segoe UI",8,FontStyle.Bold)){
-                int amountWidth=TextRenderer.MeasureText(g,amount,bold).Width;
-                TextRenderer.DrawText(g,amount,bold,new Rectangle(rect.X+33,rect.Y,amountWidth,rect.Height),Palette.Text,TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);
-                TextRenderer.DrawText(g,chip.Key.Code,small,new Rectangle(rect.X+30+amountWidth,rect.Y+1,rect.Width-amountWidth-30,rect.Height),Muted,TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);
+                int amountWidth=LunarText.MeasureText(g,amount,bold).Width;
+                LunarText.DrawText(g,amount,bold,new Rectangle(rect.X+33,rect.Y,amountWidth,rect.Height),Palette.Text,TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);
+                LunarText.DrawText(g,chip.Key.Code,small,new Rectangle(rect.X+30+amountWidth,rect.Y+1,rect.Width-amountWidth-30,rect.Height),Muted,TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);
             }
             x+=chip.Value+chipGap;
         }
@@ -764,15 +764,15 @@ sealed class StoreCanvas:Control {
         }
         int labelWidth;
         using(var font=new Font("Segoe UI",8,FontStyle.Bold)){
-            labelWidth=TextRenderer.MeasureText(g,label,font).Width;
-            TextRenderer.DrawText(g,label,font,new Rectangle(rect.X+42,rect.Y,labelWidth+4,rect.Height),labelColor,TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);
+            labelWidth=LunarText.MeasureText(g,label,font).Width;
+            LunarText.DrawText(g,label,font,new Rectangle(rect.X+42,rect.Y,labelWidth+4,rect.Height),labelColor,TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);
         }
         int valueWidth;
         using(var font=new Font("Segoe UI",15,FontStyle.Bold)){
-            valueWidth=TextRenderer.MeasureText(g,"00:00:00",font).Width;
-            int actual=TextRenderer.MeasureText(g,value,font).Width;
+            valueWidth=LunarText.MeasureText(g,"00:00:00",font).Width;
+            int actual=LunarText.MeasureText(g,value,font).Width;
             valueWidth=Math.Max(valueWidth,actual);
-            TextRenderer.DrawText(g,value,font,new Rectangle(rect.Right-valueWidth-16,rect.Y,valueWidth,rect.Height),Palette.Text,TextFormatFlags.Right|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);
+            LunarText.DrawText(g,value,font,new Rectangle(rect.Right-valueWidth-16,rect.Y,valueWidth,rect.Height),Palette.Text,TextFormatFlags.Right|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);
         }
         var bar=new Rectangle(rect.X+42+labelWidth+16,cy-3,rect.Width-(42+labelWidth+16)-valueWidth-36,6);
         if(bar.Width>40){
@@ -839,9 +839,9 @@ sealed class StoreCanvas:Control {
         if(offer.Price>=0){
             string amount=offer.Price.ToString("N0",CultureInfo.InvariantCulture);
             using(var font=new Font("Segoe UI",12,FontStyle.Bold)){
-                int textWidth=TextRenderer.MeasureText(g,amount,font).Width;
+                int textWidth=LunarText.MeasureText(g,amount,font).Width;
                 int textX=rect.Right-15-textWidth;
-                TextRenderer.DrawText(g,amount,font,new Rectangle(textX,rect.Bottom-56,textWidth,28),Violet,TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);
+                LunarText.DrawText(g,amount,font,new Rectangle(textX,rect.Bottom-56,textWidth,28),Violet,TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);
                 var icon=ApiArt.Currency("VP");
                 if(icon!=null)Contain(g,icon,new Rectangle(textX-20,rect.Bottom-49,15,15));
             }
@@ -849,14 +849,14 @@ sealed class StoreCanvas:Control {
             if(vp>=0&&vp<offer.Price){
                 string need="Need "+(offer.Price-vp).ToString("N0",CultureInfo.InvariantCulture)+" VP";
                 using(var font=new Font("Segoe UI",8,FontStyle.Bold))
-                    TextRenderer.DrawText(g,need,font,new Rectangle(rect.Right-priceWidth-15,rect.Bottom-30,priceWidth,20),Need,
+                    LunarText.DrawText(g,need,font,new Rectangle(rect.Right-priceWidth-15,rect.Bottom-30,priceWidth,20),Need,
                         TextFormatFlags.Right|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);
             }
         }else ProfileCanvas.T(g,"—",11,Muted,new Rectangle(rect.Right-40,rect.Bottom-54,30,26),true);
     }
     int DrawTag(Graphics g,string text,Image icon,int x,int y,bool star){
         int textWidth;
-        using(var font=new Font("Segoe UI",8,FontStyle.Bold))textWidth=TextRenderer.MeasureText(g,text,font).Width;
+        using(var font=new Font("Segoe UI",8,FontStyle.Bold))textWidth=LunarText.MeasureText(g,text,font).Width;
         int lead=icon!=null||star?20:8;
         var rect=new Rectangle(x,y,lead+textWidth+4,22);
         using(var shape=Skin.Round(rect,6))
@@ -869,7 +869,7 @@ sealed class StoreCanvas:Control {
             g.DrawPolygon(pen,pts);
         }
         using(var font=new Font("Segoe UI",8,FontStyle.Bold))
-            TextRenderer.DrawText(g,text,font,new Rectangle(rect.X+lead-2,rect.Y,textWidth+6,rect.Height),Palette.Cyan,TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);
+            LunarText.DrawText(g,text,font,new Rectangle(rect.X+lead-2,rect.Y,textWidth+6,rect.Height),Palette.Cyan,TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);
         return rect.Right;
     }
     void DrawBundle(Graphics g,StoreOffer bundle,Rectangle rect){
@@ -892,12 +892,12 @@ sealed class StoreCanvas:Control {
         if(bundle.Price>0){
             string amount=bundle.Price.ToString("N0",CultureInfo.InvariantCulture);
             using(var font=new Font("Segoe UI",10,FontStyle.Bold)){
-                int width=TextRenderer.MeasureText(g,amount,font).Width+40;
+                int width=LunarText.MeasureText(g,amount,font).Width+40;
                 var chip=new Rectangle(x,rect.Y+94,width,30);
                 using(var cs=Skin.Round(chip,8))using(var fill=new SolidBrush(Color.FromArgb(30,255,255,255)))g.FillPath(fill,cs);
                 var icon=ApiArt.Currency("VP");
                 if(icon!=null)Contain(g,icon,new Rectangle(chip.X+10,chip.Y+8,14,14));
-                TextRenderer.DrawText(g,amount,font,new Rectangle(chip.X+29,chip.Y,width-29,chip.Height),Color.White,TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);
+                LunarText.DrawText(g,amount,font,new Rectangle(chip.X+29,chip.Y,width-29,chip.Height),Color.White,TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);
             }
         }
     }
@@ -924,7 +924,7 @@ sealed class StoreCanvas:Control {
     }
     static void Center(Graphics g,string text,int size,Color color,Rectangle rect,bool bold){
         using(var font=new Font("Segoe UI",size,bold?FontStyle.Bold:FontStyle.Regular))
-            TextRenderer.DrawText(g,text,font,rect,color,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.WordBreak|TextFormatFlags.NoPrefix);
+            LunarText.DrawText(g,text,font,rect,color,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.WordBreak|TextFormatFlags.NoPrefix);
     }
     static void Card(Graphics g,Rectangle rect,int radius,Color fill,Color border){
         using(var shape=Skin.Round(rect,radius))
@@ -1014,6 +1014,7 @@ sealed class SkinVideoForm:Form {
             else if(e.KeyCode==Keys.Space){surface.Toggle();e.Handled=true;}
         };
         Shown+=delegate{Play(info.Videos[0].Url);};
+        LunarLanguage.Attach(this);
     }
     protected override void OnSizeChanged(EventArgs e){
         base.OnSizeChanged(e);
@@ -1125,7 +1126,7 @@ sealed class VideoChip:Control {
         Text=text;Url=url;
         DoubleBuffered=true;Cursor=Cursors.Hand;Font=new Font("Segoe UI",9,FontStyle.Bold);
         Height=34;Margin=new Padding(0,0,8,0);BackColor=Palette.Panel;
-        Width=TextRenderer.MeasureText(text,Font).Width+(Dot.HasValue?44:28);
+        Width=LunarText.MeasureText(text,Font).Width+(Dot.HasValue?44:28);
     }
     Color? Dot{
         get{
@@ -1159,7 +1160,7 @@ sealed class VideoChip:Control {
             x+=16;
         }
         var color=Ghost?(hover?Palette.Text:Palette.Muted):selected?Color.White:hover?Palette.Text:Palette.Muted;
-        TextRenderer.DrawText(g,Text,Font,new Rectangle(x,0,Width-x-8,Height),color,TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix|TextFormatFlags.SingleLine);
+        LunarText.DrawText(g,Text,Font,new Rectangle(x,0,Width-x-8,Height),color,TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix|TextFormatFlags.SingleLine);
     }
 }
 

@@ -248,7 +248,7 @@ sealed class HomeWelcome:UserControl {
     }
     static void Center(Graphics g,string text,int size,Color color,Rectangle bounds,bool bold){
         using(var font=new Font("Segoe UI",size,bold?FontStyle.Bold:FontStyle.Regular))
-            TextRenderer.DrawText(g,text,font,bounds,color,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.WordBreak|TextFormatFlags.NoPrefix);
+            LunarText.DrawText(g,text,font,bounds,color,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.WordBreak|TextFormatFlags.NoPrefix);
     }
 }
 static class AgentArt {
@@ -554,7 +554,7 @@ class HistoryView:UserControl {
         if(CanCopyName){
             int nameWidth;
             using(var font=new Font("Segoe UI",25,FontStyle.Bold))
-                nameWidth=Math.Min(bounds.Width-250,TextRenderer.MeasureText(g,shownName,font,Size.Empty,TextFormatFlags.NoPadding|TextFormatFlags.NoPrefix).Width);
+                nameWidth=Math.Min(bounds.Width-250,LunarText.MeasureText(g,shownName,font,Size.Empty,TextFormatFlags.NoPadding|TextFormatFlags.NoPrefix).Width);
             var chip=new Rectangle(x+nameWidth+12,72,copied?74:28,26);
             nameHit=Rectangle.Union(new Rectangle(x,59,nameWidth,51),chip);
             using(var shape=Skin.Round(chip,7))
@@ -663,7 +663,7 @@ class ProfileCanvas:Control {
             font=new Font("Segoe UI",size,bold?FontStyle.Bold:FontStyle.Regular);
             textFonts.Add(key,font);
         }
-        TextRenderer.DrawText(g,text,font,r,color,flags);
+        LunarText.DrawText(g,text,font,r,color,flags);
     }
     public void SetHistoryRows(IEnumerable<MatchRow> matches){
         historyLines.Clear();
@@ -1088,7 +1088,7 @@ class MatchDetailView:Control {
     }
     static void Center(Graphics g,string text,int size,Color color,Rectangle bounds,bool bold){
         using(var font=new Font("Segoe UI",size,bold?FontStyle.Bold:FontStyle.Regular))
-            TextRenderer.DrawText(g,text,font,bounds,color,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter
+            LunarText.DrawText(g,text,font,bounds,color,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter
                 |TextFormatFlags.EndEllipsis|TextFormatFlags.NoPrefix|TextFormatFlags.PreserveGraphicsClipping);
     }
 }

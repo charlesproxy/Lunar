@@ -50,9 +50,9 @@ static class RiotSessionCookie {
             form.Controls.AddRange(new Control[]{heading,details,input,save,cancel});form.AcceptButton=save;form.CancelButton=cancel;
             if(form.ShowDialog(owner)!=DialogResult.OK)return false;
             var key=input.Text.Trim();
-            if(key.Length<8||key.Any(c=>Char.IsControl(c)||c==(char)59)){MessageBox.Show(owner,"Enter a valid Riot ssid cookie.","Riot session required",MessageBoxButtons.OK,MessageBoxIcon.Information);return false;}
+            if(key.Length<8||key.Any(c=>Char.IsControl(c)||c==(char)59)){MessageBox.Show(owner,LunarLanguage.Translate("Enter a valid Riot ssid cookie."),LunarLanguage.Translate("Riot session required"),MessageBoxButtons.OK,MessageBoxIcon.Information);return false;}
             try{Save(key);return true;}
-            catch(Exception error){MessageBox.Show(owner,"Lunar could not save the key securely. "+error.Message,"Could not save session",MessageBoxButtons.OK,MessageBoxIcon.Error);return false;}
+            catch(Exception error){MessageBox.Show(owner,LunarLanguage.Translate("Lunar could not save the key securely.")+" "+error.Message,LunarLanguage.Translate("Could not save session"),MessageBoxButtons.OK,MessageBoxIcon.Error);return false;}
         }
     }
 

@@ -88,6 +88,7 @@ sealed class CrosshairEditor:Form {
             DialogResult=DialogResult.OK;
         };
         cancel.DialogResult=DialogResult.Cancel;
+        LunarLanguage.Attach(this);
         AcceptButton=save;
         CancelButton=cancel;
         Controls.AddRange(new Control[]{name,code,save,cancel});

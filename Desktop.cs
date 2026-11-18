@@ -312,6 +312,14 @@ sealed class DesktopIntegration:IDisposable {
         foreground.Start();
         updateTimer.Tick+=delegate{CheckUpdates();};
         updateTimer.Start();
+        LunarLanguage.Changed+=TranslateTray;
+        LunarLanguage.Attach(selection);
+    }
+    void TranslateTray(){
+        foreach(ToolStripItem item in menu.Items){var label=item.Tag as string;if(label!=null)item.Text=LunarLanguage.Translate(label);}
+        trayPhase.Text=LunarLanguage.Translate(trayPhase.Text);
+        displayedDiscordStatus="\0";UpdateDiscordButton();
+        selection.Invalidate();
     }
     async void CheckUpdates(){
         if(pendingUpdate!=null)return;
@@ -347,7 +355,7 @@ sealed class DesktopIntegration:IDisposable {
         main.Close();
     }
     ToolStripMenuItem TrayAction(string label,EventHandler handler){
-        var item=new ToolStripMenuItem(label,null,handler){
+        var item=new ToolStripMenuItem(LunarLanguage.Translate(label),null,handler){Tag=label,
             AutoSize=false,Size=new Size(228,36),TextAlign=ContentAlignment.MiddleLeft,Padding=new Padding(7,0,0,0),
             ForeColor=Palette.Text
         };
@@ -510,9 +518,8 @@ sealed class DesktopIntegration:IDisposable {
         if(fullscreenNoticeShown)return;
         fullscreenNoticeShown=true;
         try{
-            tray.ShowBalloonTip(8000,"Lunar",LunarLanguage.Text(
-                "VALORANT is in exclusive Fullscreen, which hides the overlay. In VALORANT → Settings → Video, set Display Mode to Windowed Fullscreen.",
-                "O VALORANT está em Tela cheia exclusiva, que esconde o overlay. Em VALORANT → Configurações → Vídeo, mude o Modo de exibição para Tela cheia em janela."),ToolTipIcon.Info);
+            tray.ShowBalloonTip(8000,"Lunar",LunarLanguage.Translate(
+                "VALORANT is in exclusive Fullscreen, which hides the overlay. In VALORANT → Settings → Video, set Display Mode to Windowed Fullscreen."),ToolTipIcon.Info);
         }catch(Exception){}
     }
     void SyncOverlay(){
@@ -577,8 +584,8 @@ sealed class DesktopIntegration:IDisposable {
         }else backdrop.Hide();
     }
     public void Update(Snapshot data){
-        trayPhase.Text=data.Status=="IN MATCH"?(data.Map=="Map unavailable"?"In match":data.Map+" · In match"):
-            data.Status=="AGENT SELECT"?"Agent select":data.Self!=null?"VALORANT lobby":"Waiting for VALORANT";
+        trayPhase.Text=LunarLanguage.Translate(data.Status=="IN MATCH"?(data.Map=="Map unavailable"?"In match":data.Map+" · In match"):
+            data.Status=="AGENT SELECT"?"Agent select":data.Self!=null?"VALORANT lobby":"Waiting for VALORANT");
         shortcutActive=CanOpenLiveMatch(data);
         string nextMatch=shortcutActive?data.Match:"";
         string nextSelect=data.Status=="AGENT SELECT"?nextMatch:"";
@@ -611,13 +618,14 @@ sealed class DesktopIntegration:IDisposable {
         bool enabled=discord.Enabled;
         discordButton.Checked=enabled;
         discordMenu.Checked=enabled;
-        discordMenu.Text="Discord Presence";
+        discordMenu.Text=LunarLanguage.Translate("Discord Presence");
         discordMenu.Tag=enabled;
         string summary=DiscordToggle.StatusText(status,enabled,discord.Connected,saveError!="");
-        discordButton.SetStatus(summary,discord.Connected&&enabled,saveError!="");
-        discordButton.AccessibleDescription=summary+". Click to "+(enabled?"turn off":"turn on")+" Discord Presence.";
+        discordButton.SetStatus(LunarLanguage.Translate(summary),discord.Connected&&enabled,saveError!="");
+        discordButton.AccessibleDescription=summary+". "+LunarLanguage.Translate(enabled?"Click to turn off Discord Presence.":"Click to turn on Discord Presence.");
     }
     public void Dispose(){
+        LunarLanguage.Changed-=TranslateTray;
         updateTimer.Stop();updateTimer.Dispose();
         updateCancellation.Cancel();updateCancellation.Dispose();
         foreground.Stop();foreground.Dispose();
@@ -633,16 +641,17 @@ sealed class HotkeyCaptureDialog:Form {
     readonly Label prompt;
     public Keys CapturedKey{get;private set;}
     public Keys CapturedModifiers{get;private set;}
-    public HotkeyCaptureDialog(string current,bool portuguese){
-        Text=portuguese?"Alterar atalho":"Change hotkey";
+    public HotkeyCaptureDialog(string current){
+        Text="Change hotkey";
         FormBorderStyle=FormBorderStyle.FixedDialog;StartPosition=FormStartPosition.CenterParent;
         ShowInTaskbar=false;MaximizeBox=false;MinimizeBox=false;KeyPreview=true;
         ClientSize=new Size(430,170);BackColor=Palette.Panel;ForeColor=Palette.Text;
-        var title=new Label{Text=portuguese?"Pressione a nova combinação":"Press the new key combination",Location=new Point(22,19),Size=new Size(385,28),Font=new Font("Segoe UI",12,FontStyle.Bold),ForeColor=Palette.Text,BackColor=Color.Transparent};
-        prompt=new Label{Text=(portuguese?"Atalho atual: ":"Current shortcut: ")+current+"\r\n"+(portuguese?"Use Alt, Ctrl ou Shift junto com uma tecla. Esc cancela.":"Use Alt, Ctrl or Shift with a key. Esc cancels."),Location=new Point(24,58),Size=new Size(385,48),Font=new Font("Segoe UI",9),ForeColor=Palette.Muted,BackColor=Color.Transparent};
-        var cancel=new Button{Text=portuguese?"Cancelar":"Cancel",Location=new Point(314,119),Size=new Size(96,32),FlatStyle=FlatStyle.Flat,BackColor=Palette.Raised,ForeColor=Palette.Text,Font=new Font("Segoe UI",9),DialogResult=DialogResult.Cancel};
+        var title=new Label{Text="Press the new key combination",Location=new Point(22,19),Size=new Size(385,28),Font=new Font("Segoe UI",12,FontStyle.Bold),ForeColor=Palette.Text,BackColor=Color.Transparent};
+        prompt=new Label{Text="Current shortcut: "+current+"\r\nUse Alt, Ctrl or Shift with a key. Esc cancels.",Location=new Point(24,58),Size=new Size(385,48),Font=new Font("Segoe UI",9),ForeColor=Palette.Muted,BackColor=Color.Transparent};
+        var cancel=new Button{Text="Cancel",Location=new Point(314,119),Size=new Size(96,32),FlatStyle=FlatStyle.Flat,BackColor=Palette.Raised,ForeColor=Palette.Text,Font=new Font("Segoe UI",9),DialogResult=DialogResult.Cancel};
         cancel.FlatAppearance.BorderColor=Palette.Border;Controls.Add(title);Controls.Add(prompt);Controls.Add(cancel);CancelButton=cancel;
         KeyDown+=CaptureKey;
+        LunarLanguage.Attach(this);
     }
     void CaptureKey(object sender,KeyEventArgs e){
         e.Handled=true;e.SuppressKeyPress=true;
@@ -653,7 +662,7 @@ sealed class HotkeyCaptureDialog:Form {
         if(e.Control)modifiers|=Keys.Control;
         if(e.Shift)modifiers|=Keys.Shift;
         if(!HotkeyPreference.Valid(e.KeyCode,modifiers)){
-            prompt.Text=Text.StartsWith("Alterar",StringComparison.Ordinal)?"Use pelo menos Alt, Ctrl ou Shift com uma tecla.":"Use at least Alt, Ctrl or Shift with a key.";
+            prompt.Text="Use at least Alt, Ctrl or Shift with a key.";
             return;
         }
         CapturedKey=e.KeyCode;CapturedModifiers=modifiers;DialogResult=DialogResult.OK;Close();
@@ -733,7 +742,7 @@ sealed class DiscordToggle:CheckBox {
             g.DrawImage(symbol,icon);
         }
         Rectangle label=new Rectangle(43,0,Width-70,Height);
-        TextRenderer.DrawText(g,Text,Font,label,Palette.Text,
+        LunarText.DrawText(g,Text,Font,label,Palette.Text,
             TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix|TextFormatFlags.NoPadding|TextFormatFlags.EndEllipsis);
         var dot=new Rectangle(Width-19,(Height-7)/2,7,7);
         var tint=StatusColor;
@@ -781,7 +790,7 @@ sealed class DiscordStatusHint:Control {
             g.DrawPath(edge,path);
             g.FillEllipse(dot,11,(Height-6)/2,6,6);
         }
-        TextRenderer.DrawText(g,Text,Font,new Rectangle(24,0,Width-31,Height),Palette.Text,
+        LunarText.DrawText(g,Text,Font,new Rectangle(24,0,Width-31,Height),Palette.Text,
             TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix|TextFormatFlags.NoPadding|TextFormatFlags.EndEllipsis);
     }
 }
@@ -982,7 +991,7 @@ sealed class AgentSelectOverlay:Form {
     void DrawLevel(Graphics g,Rectangle portrait,string text){
         const TextFormatFlags flags=TextFormatFlags.NoPadding|TextFormatFlags.SingleLine|
             TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter;
-        int width=TextRenderer.MeasureText(g,text,levelFont,Size.Empty,flags).Width+6;
+        int width=LunarText.MeasureText(g,text,levelFont,Size.Empty,flags).Width+6;
         var badge=new Rectangle(portrait.Right-width+1,portrait.Bottom-10,width,11);
         using(var shape=Skin.Round(badge,3))
         using(var fill=new SolidBrush(Color.FromArgb(24,16,36)))
@@ -990,7 +999,7 @@ sealed class AgentSelectOverlay:Form {
             g.FillPath(fill,shape);
             g.DrawPath(edge,shape);
         }
-        TextRenderer.DrawText(g,text,levelFont,badge,Palette.Text,flags);
+        LunarText.DrawText(g,text,levelFont,badge,Palette.Text,flags);
     }
 
 }
@@ -1077,7 +1086,7 @@ static class LiveMatchArt {
             using(var brush=new SolidBrush(fill))g.FillPath(brush,path);
             string result=match.Result==Outcome.Win?"W":match.Result==Outcome.Loss?"L":"D";
             using(var font=new Font("Segoe UI",7,FontStyle.Bold))
-                TextRenderer.DrawText(g,result,font,rect,Color.White,TextFormatFlags.NoPadding|TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);
+                LunarText.DrawText(g,result,font,rect,Color.White,TextFormatFlags.NoPadding|TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);
             i++;
         }
     }
