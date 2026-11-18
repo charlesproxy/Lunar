@@ -82,7 +82,7 @@ static class RiotStatsClient {
         internal DateTime Expires;
         internal string Pd {get{return "https://pd."+Shard+".a.pvp.net";}}
     }
-    static readonly SemaphoreSlim sessionGate=new SemaphoreSlim(1,1),networkGate=new SemaphoreSlim(8,8),backgroundGate=new SemaphoreSlim(2,2);
+    static readonly SemaphoreSlim sessionGate=new SemaphoreSlim(1,1),networkGate=new SemaphoreSlim(10,10),backgroundGate=new SemaphoreSlim(4,4); // live board: 4 players in parallel
     static volatile Session session;
     static int sessionBuilds,sessionReuses;
     internal static int SessionBuildCount {get{return Volatile.Read(ref sessionBuilds);}}
@@ -308,7 +308,12 @@ static class RiotStatsClient {
         try{return await LoadPage(player,0,10,"Competitive",cancel).ConfigureAwait(false);}
         finally{backgroundGate.Release();}
     }
-    static async Task<PlayerProfile> LoadProfileCore(Player player,CancellationToken cancel,IProgress<PlayerProfile> rankReady,bool background){        var profile=new PlayerProfile{Id=player.Id,Name=player.Name,CardId=player.CardId,AccountLevel=player.AccountLevel,AccountLevelHidden=player.AccountLevelHidden};
+    static async Task<PlayerProfile> LoadProfileCore(Player player,CancellationToken cancel,IProgress<PlayerProfile> rankReady,bool background){
+        var clock=System.Diagnostics.Stopwatch.StartNew();
+        try{return await LoadProfileTimed(player,cancel,rankReady,background).ConfigureAwait(false);}
+        finally{LunarLog.Write("profile",(background?"live":"opened")+" profile loaded in "+clock.ElapsedMilliseconds+" ms");}
+    }
+    static async Task<PlayerProfile> LoadProfileTimed(Player player,CancellationToken cancel,IProgress<PlayerProfile> rankReady,bool background){        var profile=new PlayerProfile{Id=player.Id,Name=player.Name,CardId=player.CardId,AccountLevel=player.AccountLevel,AccountLevelHidden=player.AccountLevelHidden};
         names[player.Id]=player.Name;
         var history=background?BackgroundHistory(player,cancel):LoadPage(player,0,10,"Competitive",cancel);
         var rrTask=LoadRR(player,20,cancel);

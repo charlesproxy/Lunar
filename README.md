@@ -26,7 +26,7 @@ Profile loading requests ten recent competitive matches and rank concurrently. E
 
 Account levels appear in the profile header, Live Match list and Alt+T overlay. Live identity levels take precedence. When absent, the latest available match level is used and the profile labels it as recent-match data. Numbers returned by Riot are displayed even when the in-game level display flag is hidden. When neither the live response nor recent matches provides a number, an em dash is displayed; values are never fabricated.
 
-Summit uses the native Plummet map alias and its bundled image. Background history loading is limited to two profiles concurrently, with up to eight network requests, to reduce contention with interactive searches. The initial ten-match count is subject to the records actually available from Riot. Date headers such as Today still count only games played on that date.
+Summit uses the native Plummet map alias and its bundled image. Background history loading runs four profiles concurrently, with up to ten network requests, so the live board fills quickly without flooding Riot. The initial ten-match count is subject to the records actually available from Riot. Date headers such as Today still count only games played on that date.
 
 Scoreboards show each player's account level recorded in that match. Map names, aliases and UUID resolution come from the bundled maps catalog (including canonical display names and native paths). Unrecognized map identifiers display Map unavailable rather than an internal code.
 

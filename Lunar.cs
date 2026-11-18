@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 [assembly: System.Reflection.AssemblyTitle("Lunar")]
 [assembly: System.Reflection.AssemblyProduct("Lunar")]
-[assembly: System.Reflection.AssemblyFileVersion("2.0.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("2.1.0.0")]
 
 namespace Lunar {
 static class Json {
