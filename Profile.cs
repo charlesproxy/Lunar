@@ -945,10 +945,14 @@ class ProfileCanvas:Control {
         T(g,score,12,accent,new Rectangle(scoreX,row.Y+7,row.Width/5,25),true);
         int columnWidth=row.X+row.Width*56/100-scoreX-8;
         int pillWidth=ResultPill(g,match,accent,new Point(scoreX,row.Y+33),columnWidth);
-        // MVP badge adapts to the width: next to the result, else next to the score, else a star only. Never hidden.
+        // MVP badge always on the result line: right of the result when there is room, otherwise to its LEFT in the
+        // free space after "Competitive · 18:04"; only as a last resort next to the score or as a star.
         if(match.Mvp!=MvpKind.None){
+            int queueEnd;using(var small=new Font("Segoe UI",8))queueEnd=mapX+LunarText.MeasureText(g,match.Queue+" · "+match.Started.ToString("HH:mm"),small,Size.Empty,CanvasText).Width;
+            int leftRoom=scoreX-6-(queueEnd+10);
             int scoreWidth;using(var scoreFont=new Font("Segoe UI",12,FontStyle.Bold))scoreWidth=LunarText.MeasureText(g,score,scoreFont,Size.Empty,CanvasText).Width;
             if(!MvpBadge(g,match,new Point(scoreX+pillWidth+6,row.Y+33),columnWidth-pillWidth-6,false)&&
+               !MvpBadgeRight(g,match,scoreX-6,row.Y+33,leftRoom)&&
                !MvpBadge(g,match,new Point(scoreX+scoreWidth+8,row.Y+11),columnWidth-scoreWidth-8,false))
                 MvpBadge(g,match,new Point(scoreX+scoreWidth+6,row.Y+11),Math.Max(26,columnWidth-scoreWidth-6),true);
         }
@@ -982,6 +986,18 @@ class ProfileCanvas:Control {
     }
     // ★ MVP (gold) or ★ TEAM MVP (silver) next to the score.
     static readonly Color MvpGold=Color.FromArgb(246,201,92),MvpSilver=Color.FromArgb(196,204,218);
+    // Badge whose RIGHT edge is at 'right' (placed just left of the result pill).
+    static bool MvpBadgeRight(Graphics g,MatchRow match,int right,int y,int room){
+        bool gold=match.Mvp==MvpKind.Match;
+        foreach(var text in new[]{"★ "+LunarLanguage.Translate(gold?"MATCH MVP":"TEAM MVP"),"★ MVP"}){
+            int width=LunarText.MeasureText(g,text,PillFont,Size.Empty,CanvasText).Width+16;
+            if(width>room)continue;
+            var color=gold?MvpGold:MvpSilver;
+            Pill(g,new Rectangle(right-width,y,width,18),text,Color.FromArgb(gold?64:46,color),Color.FromArgb(170,color),Lighter(color,10));
+            return true;
+        }
+        return false;
+    }
     // Returns false when the badge does not fit in maxWidth (the caller then tries another spot).
     static bool MvpBadge(Graphics g,MatchRow match,Point origin,int maxWidth,bool starOnly){
         if(match.Mvp==MvpKind.None)return true;

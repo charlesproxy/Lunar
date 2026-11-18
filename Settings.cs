@@ -42,9 +42,23 @@ sealed class SettingsSurface:Panel {
             int by=blockTop+26;
             foreach(var body in card.Body){body.Location=new Point(textX,by);body.Width=textWidth;by+=body.Height;}
             card.Action.Location=new Point(card.Bounds.Right-24-actionWidth,card.Bounds.Y+(CardHeight-card.Action.Height)/2);
+            // Rounded controls clear their corners with this colour: use the card's colour where the control sits,
+            // otherwise the page background shows as dark corners around the button/dropdown.
+            Color surface=CardColorAt(card.Bounds,card.Action.Left+card.Action.Width/2);
+            var button=card.Action as SoftButton;if(button!=null){button.SurfaceColor=surface;button.Invalidate();}
+            var select=card.Action as SoftSelect;if(select!=null){select.SurfaceColor=surface;select.Invalidate();}
             y+=CardHeight+CardGap;
         }
         Invalidate();
+    }
+    // Colour of the card gradient (faint accent over the page background → panel) at a given x.
+    Color CardColorAt(Rectangle card,int x){
+        var left=Blend(Palette.Accent,BackColor,14/255f);
+        float t=card.Width<=0?1f:Math.Max(0f,Math.Min(1f,(x-card.X)/(float)card.Width));
+        return Color.FromArgb((int)Math.Round(left.R+(Palette.Panel.R-left.R)*t),(int)Math.Round(left.G+(Palette.Panel.G-left.G)*t),(int)Math.Round(left.B+(Palette.Panel.B-left.B)*t));
+    }
+    static Color Blend(Color top,Color bottom,float alpha){
+        return Color.FromArgb((int)Math.Round(bottom.R+(top.R-bottom.R)*alpha),(int)Math.Round(bottom.G+(top.G-bottom.G)*alpha),(int)Math.Round(bottom.B+(top.B-bottom.B)*alpha));
     }
     protected override void OnPaint(PaintEventArgs e){
         base.OnPaint(e);
