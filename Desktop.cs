@@ -796,6 +796,7 @@ sealed class DiscordToggle:CheckBox {
     internal static string StatusText(string status,bool enabled,bool online,bool saveFailed){
         if(saveFailed)return "Couldn’t save changes";
         if(!enabled)return "Presence off";
+        if(status==DiscordPresence.IdleStatus)return "Shows during matches";
         if(online)return "Presence active";
         if(status=="Waiting for Discord desktop")return "Open Discord desktop";
         if(status=="Connecting to Discord…")return "Connecting…";
@@ -1269,8 +1270,11 @@ namespace Lunar {
 sealed class DiscordActivity {
     readonly string details,state,map,agent,mapArt,agentArt;
     public readonly long Started;
-    public string Key{get{return String.Join("|",details,state,map,agent,mapArt,agentArt,Started.ToString());}}
-    DiscordActivity(string details,string state,string map,string agent,string mapArt,string agentArt,long started){
+    // Only shown on the Discord profile while actually in a match; otherwise the activity is cleared.
+    public readonly bool Visible;
+    public string Key{get{return Visible?String.Join("|",details,state,map,agent,mapArt,agentArt,Started.ToString()):"hidden";}}
+    DiscordActivity(string details,string state,string map,string agent,string mapArt,string agentArt,long started,bool visible){
+        Visible=visible;
         this.details=details;this.state=state;this.map=map;this.agent=agent;
         this.mapArt=mapArt;this.agentArt=agentArt;Started=started;
     }
@@ -1291,7 +1295,7 @@ sealed class DiscordActivity {
             details=String.IsNullOrEmpty(map)?"Live score  ·  "+score:map+"  ·  "+score;
             state=state==""?"In Match":state+"  ·  In Match";
         }
-        return new DiscordActivity(details,state,map,agent,mapImage,agentImage,started);
+        return new DiscordActivity(details,state,map,agent,mapImage,agentImage,started,live);
     }
     static string Art(string directory,string id,string file){
         Guid value;
@@ -1315,6 +1319,7 @@ sealed class DiscordPresence:IDisposable {
     const string ConnectedStatus="Activity sent to Discord";
     const string ConnectingStatus="Connecting to Discord…";
     const string DisabledStatus="Activity sharing is off";
+    internal const string IdleStatus="Shown during matches";
     readonly System.Threading.CancellationTokenSource cancel=new System.Threading.CancellationTokenSource();
     readonly System.Threading.SemaphoreSlim changed=new System.Threading.SemaphoreSlim(0,1);
     readonly object gate=new object();
@@ -1325,7 +1330,7 @@ sealed class DiscordPresence:IDisposable {
     string match="";
     volatile string status=ConnectingStatus;
     public bool Enabled{get;private set;}
-    public bool Connected{get{return status==ConnectedStatus;}}
+    public bool Connected{get{return status==ConnectedStatus||status==IdleStatus;}}
     public string Status{get{return status;}}
 
     public DiscordPresence(){
@@ -1357,6 +1362,8 @@ sealed class DiscordPresence:IDisposable {
                 start=DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             }
             var next=DiscordActivity.From(snapshot,start);
+            // The timer starts when the match itself starts (agent select shares the match ID).
+            if(next.Visible&&!state.Visible)next=DiscordActivity.From(snapshot,DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             if(state.Key==next.Key)return;
             state=next;
         }
@@ -1387,7 +1394,11 @@ sealed class DiscordPresence:IDisposable {
                             sent="";
                         }else status="Waiting for Discord desktop";
                     }
-                    if(enabled&&pipe!=null&&(sent!=activity.Key||DateTime.UtcNow>=refreshAt)){
+                    if(enabled&&pipe!=null&&!activity.Visible){
+                        // Not in a match: clear the activity once, nothing to refresh.
+                        if(sent!=activity.Key){await SetActivity(pipe,null);sent=activity.Key;}
+                        status=IdleStatus;
+                    }else if(enabled&&pipe!=null&&(sent!=activity.Key||DateTime.UtcNow>=refreshAt)){
                         await SetActivity(pipe,activity);
                         sent=activity.Key;
                         refreshAt=DateTime.UtcNow.AddSeconds(15);
