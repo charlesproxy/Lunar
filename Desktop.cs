@@ -319,24 +319,36 @@ sealed class DesktopIntegration:IDisposable {
         selection.PlayerClicked+=delegate(Player player){OpenMain();HideOverlay();openPlayer(player);};
         discordButton.Click+=ToggleDiscord;
         menu=new RoundedTrayMenu{ShowImageMargin=false,ShowCheckMargin=false,BackColor=TrayMenuRenderer.Surface,
-            ForeColor=Palette.Text,Padding=new Padding(5),Renderer=new TrayMenuRenderer(),Font=new Font("Segoe UI",10)};
+            ForeColor=Palette.Text,Padding=new Padding(6,6,6,6),Renderer=new TrayMenuRenderer(),Font=new Font("Segoe UI",9.5f)};
         trayLogo=TrackArt.Asset("lunar.png");
-        menu.Items.Add(new ToolStripLabel("Lunar",trayLogo){Font=new Font("Segoe UI",12,FontStyle.Bold),ForeColor=Palette.Text,
-            AutoSize=false,Size=new Size(218,30),Margin=new Padding(9,5,8,0),ImageAlign=ContentAlignment.MiddleLeft,
-            TextAlign=ContentAlignment.MiddleLeft,TextImageRelation=TextImageRelation.ImageBeforeText});
-        trayPhase=new ToolStripLabel("Waiting for VALORANT"){ForeColor=Palette.Muted,Margin=new Padding(10,0,10,7),
-            TextAlign=ContentAlignment.MiddleLeft};
+        // Header: logo, name and version (drawn by TrayMenuRenderer).
+        menu.Items.Add(new ToolStripLabel("Lunar"){Name="header",Font=new Font("Segoe UI",11.5f,FontStyle.Bold),ForeColor=Palette.Text,
+            AutoSize=false,Size=new Size(TrayMenuRenderer.Width,40),Margin=new Padding(0,2,0,0),Padding=new Padding(44,0,0,0),
+            TextAlign=ContentAlignment.MiddleLeft});
+        // Status pill: colour comes from the phase (green in match, purple agent select, grey waiting).
+        trayPhase=new ToolStripLabel("Waiting for VALORANT"){Name="phase",ForeColor=Palette.Text,AutoSize=false,Size=new Size(TrayMenuRenderer.Width,34),
+            Margin=new Padding(0,0,0,4),Padding=new Padding(30,0,10,0),TextAlign=ContentAlignment.MiddleLeft,Font=new Font("Segoe UI",8.75f,FontStyle.Bold)};
         menu.Items.Add(trayPhase);
         trayWarning=new ToolStripLabel(LunarLanguage.Translate("⚠ Exclusive Fullscreen: overlay unavailable")){Tag="⚠ Exclusive Fullscreen: overlay unavailable",
-            ForeColor=Color.FromArgb(245,190,95),Margin=new Padding(10,0,10,7),TextAlign=ContentAlignment.MiddleLeft,Available=false};
+            ForeColor=Color.FromArgb(245,190,95),AutoSize=false,Size=new Size(TrayMenuRenderer.Width,24),Margin=new Padding(0,0,0,4),Padding=new Padding(14,0,8,0),
+            TextAlign=ContentAlignment.MiddleLeft,Font=new Font("Segoe UI",8.25f,FontStyle.Bold),Available=false};
         menu.Items.Add(trayWarning);
         menu.Items.Add(new ToolStripSeparator());
-        discordMenu=TrayAction("Discord Presence",ToggleDiscord);
-        TrayAction("Open Lunar",delegate{OpenMain();});
-        TrayAction("Copy diagnostics",delegate{try{Clipboard.SetText(main.DiagnosticsText);tray.ShowBalloonTip(3000,"Lunar",LunarLanguage.Translate("Diagnostics copied. Paste them in the chat."),ToolTipIcon.Info);}catch(Exception){}});
-        installUpdate=TrayAction("Install update",delegate{ExitWithUpdate(true);});
+        discordMenu=TrayAction("Discord Presence",ToggleDiscord,TrayGlyph.Discord);
+        TrayAction("Open Lunar",delegate{OpenMain();},TrayGlyph.Window);
+        installUpdate=TrayAction("Install update",delegate{ExitWithUpdate(true);},TrayGlyph.Update);
+        installUpdate.ForeColor=Palette.Cyan;installUpdate.Font=new Font("Segoe UI",9.5f,FontStyle.Bold);
         installUpdate.Available=false;
-        TrayAction("Exit Lunar",delegate{ExitWithUpdate(false);}).ForeColor=Color.FromArgb(236,153,172);
+        menu.Items.Add(new ToolStripSeparator());
+        TrayAction("Exit Lunar",delegate{ExitWithUpdate(false);},TrayGlyph.Power).ForeColor=Color.FromArgb(240,130,150);
+        // Diagnostics stay reachable for support: Ctrl+Shift+D in the Lunar window copies them.
+        main.KeyPreview=true;
+        main.KeyDown+=delegate(object sender,KeyEventArgs e){
+            if(e.Control&&e.Shift&&e.KeyCode==Keys.D){
+                try{Clipboard.SetText(main.DiagnosticsText);tray.ShowBalloonTip(3000,"Lunar",LunarLanguage.Translate("Diagnostics copied. Paste them in the chat."),ToolTipIcon.Info);}catch(Exception){}
+                e.Handled=true;
+            }
+        };
         UpdateDiscordButton();
         tray=new NotifyIcon{Icon=main.Icon,Text="Lunar",ContextMenuStrip=menu,Visible=true};
         tray.DoubleClick+=delegate{OpenMain();};
@@ -349,6 +361,12 @@ sealed class DesktopIntegration:IDisposable {
         updateTimer.Start();
         LunarLanguage.Changed+=TranslateTray;
         LunarLanguage.Attach(selection);
+    }
+    internal ContextMenuStrip TrayMenu{get{return menu;}}
+    internal void PreviewTray(string phase,bool update){
+        TrayMenuRenderer.PhaseColor=phase=="IN MATCH"?Palette.Win:phase=="AGENT SELECT"?Palette.Accent:Palette.Muted;
+        trayPhase.Text=LunarLanguage.Translate(phase=="IN MATCH"?"Ascent · In match":phase=="AGENT SELECT"?"Agent select":"Waiting for VALORANT");
+        installUpdate.Available=update;
     }
     void TranslateTray(){
         foreach(ToolStripItem item in menu.Items){var label=item.Tag as string;if(label!=null)item.Text=LunarLanguage.Translate(label);}
@@ -393,11 +411,12 @@ sealed class DesktopIntegration:IDisposable {
         exit=true;
         main.Close();
     }
-    ToolStripMenuItem TrayAction(string label,EventHandler handler){
+    ToolStripMenuItem TrayAction(string label,EventHandler handler,TrayGlyph glyph){
         var item=new ToolStripMenuItem(LunarLanguage.Translate(label),null,handler){Tag=label,
-            AutoSize=false,Size=new Size(228,36),TextAlign=ContentAlignment.MiddleLeft,Padding=new Padding(7,0,0,0),
+            AutoSize=false,Size=new Size(TrayMenuRenderer.Width,38),TextAlign=ContentAlignment.MiddleLeft,Padding=new Padding(34,0,0,0),
             ForeColor=Palette.Text
         };
+        TrayMenuRenderer.Glyphs[item]=glyph;
         menu.Items.Add(item);
         return item;
     }
@@ -656,6 +675,7 @@ sealed class DesktopIntegration:IDisposable {
         }else backdrop.Hide();
     }
     public void Update(Snapshot data){
+        TrayMenuRenderer.PhaseColor=data.Status=="IN MATCH"?Palette.Win:data.Status=="AGENT SELECT"?Palette.Accent:data.Self!=null?Color.FromArgb(110,170,235):Palette.Muted;
         trayPhase.Text=LunarLanguage.Translate(data.Status=="IN MATCH"?(data.Map=="Map unavailable"?"In match":data.Map+" · In match"):
             data.Status=="AGENT SELECT"?"Agent select":data.Self!=null?"VALORANT lobby":"Waiting for VALORANT");
         shortcutActive=CanOpenLiveMatch(data);
@@ -875,30 +895,105 @@ sealed class RoundedTrayMenu:ContextMenuStrip {
     }
 }
 
+enum TrayGlyph {Discord,Window,Update,Power}
 sealed class TrayMenuRenderer:ToolStripProfessionalRenderer {
-    public static readonly Color Surface=Palette.Panel;
+    public static readonly Color Surface=Color.FromArgb(24,27,34);
+    public const int Width=252;
+    public static readonly Dictionary<ToolStripItem,TrayGlyph> Glyphs=new Dictionary<ToolStripItem,TrayGlyph>();
+    public static Color PhaseColor=Palette.Muted;
+    static readonly Image Logo=TrackArt.Asset("lunar.png"),Clyde=TrackArt.Asset("discord-clyde.png");
     public TrayMenuRenderer(){RoundedEdges=false;}
-    protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e){e.Graphics.Clear(Surface);}
+    protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e){
+        var g=e.Graphics;g.Clear(Surface);
+        // Soft accent glow behind the header.
+        var top=new Rectangle(0,0,e.ToolStrip.Width,70);
+        using(var glow=new LinearGradientBrush(new Rectangle(0,-1,top.Width,top.Height+2),Color.FromArgb(34,Palette.Accent),Color.FromArgb(0,Palette.Accent),90f)){
+            glow.WrapMode=WrapMode.TileFlipXY;g.FillRectangle(glow,top);
+        }
+    }
     protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e){
         e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;
-        using(var outline=Skin.Round(new Rectangle(0,0,e.ToolStrip.Width-1,e.ToolStrip.Height-1),13))
-        using(var border=new Pen(Palette.Border))e.Graphics.DrawPath(border,outline);
+        using(var outline=Skin.Round(new Rectangle(0,0,e.ToolStrip.Width-1,e.ToolStrip.Height-1),14))
+        using(var border=new Pen(Color.FromArgb(70,Palette.Accent)))e.Graphics.DrawPath(border,outline);
+    }
+    protected override void OnRenderLabelBackground(ToolStripItemRenderEventArgs e){
+        var g=e.Graphics;g.SmoothingMode=SmoothingMode.AntiAlias;
+        var item=e.Item;
+        if(item.Name=="header"){
+            var tile=new Rectangle(12,(item.Height-28)/2,28,28);
+            using(var shape=Skin.Round(tile,8))using(var fill=new SolidBrush(Color.FromArgb(40,Palette.Accent)))g.FillPath(fill,shape);
+            if(Logo!=null){g.InterpolationMode=InterpolationMode.HighQualityBicubic;g.DrawImage(Logo,Rectangle.Inflate(tile,-3,-3));}
+            using(var font=new Font("Segoe UI",8,FontStyle.Bold)){
+                string version="v"+LunarUpdates.DisplayVersion;
+                var size=TextRenderer.MeasureText(version,font);
+                var pill=new Rectangle(item.Width-size.Width-26,(item.Height-20)/2,size.Width+12,20);
+                using(var shape=Skin.Round(pill,10))using(var fill=new SolidBrush(Color.FromArgb(28,255,255,255)))g.FillPath(fill,shape);
+                TextRenderer.DrawText(g,version,font,pill,Palette.Muted,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPadding);
+            }
+        }else if(item.Name=="phase"){
+            var pill=new Rectangle(10,3,item.Width-20,item.Height-6);
+            using(var shape=Skin.Round(pill,pill.Height/2))
+            using(var fill=new SolidBrush(Color.FromArgb(30,PhaseColor)))
+            using(var edge=new Pen(Color.FromArgb(90,PhaseColor))){g.FillPath(fill,shape);g.DrawPath(edge,shape);}
+            int cy=pill.Y+pill.Height/2;
+            using(var halo=new SolidBrush(Color.FromArgb(60,PhaseColor)))g.FillEllipse(halo,pill.X+9,cy-6,12,12);
+            using(var dot=new SolidBrush(PhaseColor))g.FillEllipse(dot,pill.X+12,cy-3,6,6);
+        }
     }
     protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e){
-        e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;
-        if(e.Item.Selected)
-            using(var shape=Skin.Round(new Rectangle(2,1,e.Item.Width-4,e.Item.Height-2),8))
-            using(var fill=new SolidBrush(Palette.AccentSoft))e.Graphics.FillPath(fill,shape);
-        if(e.Item.Tag is bool){
-            bool enabled=(bool)e.Item.Tag;
-            var toggle=new Rectangle(e.Item.Width-49,(e.Item.Height-16)/2,33,16);
-            DiscordToggle.DrawTrack(e.Graphics,toggle,enabled);
+        var g=e.Graphics;g.SmoothingMode=SmoothingMode.AntiAlias;
+        var item=e.Item;
+        bool danger=item.ForeColor.R>230&&item.ForeColor.G<150;
+        if(item.Selected)
+            using(var shape=Skin.Round(new Rectangle(4,2,item.Width-8,item.Height-4),9))
+            using(var fill=new SolidBrush(danger?Color.FromArgb(46,240,86,106):Color.FromArgb(48,Palette.Accent)))g.FillPath(fill,shape);
+        TrayGlyph glyph;
+        if(Glyphs.TryGetValue(item,out glyph))DrawGlyph(g,glyph,new Rectangle(14,(item.Height-18)/2,18,18),item.ForeColor,item.Selected);
+        if(item.Tag is bool){
+            bool enabled=(bool)item.Tag;
+            var toggle=new Rectangle(item.Width-50,(item.Height-16)/2,33,16);
+            DiscordToggle.DrawTrack(g,toggle,enabled);
+        }
+    }
+    static void DrawGlyph(Graphics g,TrayGlyph glyph,Rectangle r,Color color,bool hot){
+        var ink=glyph==TrayGlyph.Power||glyph==TrayGlyph.Update?color:hot?Palette.Text:Palette.Muted;
+        using(var pen=new Pen(ink,1.6f){StartCap=LineCap.Round,EndCap=LineCap.Round,LineJoin=LineJoin.Round}){
+            float x=r.X,y=r.Y,w=r.Width,h=r.Height,cx=x+w/2,cy=y+h/2;
+            switch(glyph){
+                case TrayGlyph.Discord:
+                    if(Clyde!=null){g.InterpolationMode=InterpolationMode.HighQualityBicubic;g.DrawImage(Clyde,Rectangle.Inflate(r,-1,-2));}
+                    break;
+                case TrayGlyph.Window:
+                    using(var shape=Skin.Round(new Rectangle((int)x+1,(int)y+2,(int)w-2,(int)h-4),3))g.DrawPath(pen,shape);
+                    g.DrawLine(pen,x+1,y+7,x+w-1,y+7);
+                    break;
+                case TrayGlyph.Update:
+                    g.DrawLine(pen,cx,y+2,cx,y+11);
+                    g.DrawLines(pen,new[]{new PointF(cx-4,y+7.5f),new PointF(cx,y+11.5f),new PointF(cx+4,y+7.5f)});
+                    g.DrawLines(pen,new[]{new PointF(x+2,y+12),new PointF(x+2,y+16),new PointF(x+w-2,y+16),new PointF(x+w-2,y+12)});
+                    break;
+                case TrayGlyph.Power:
+                    g.DrawArc(pen,x+2,y+3,w-4,h-4,-55,290);
+                    g.DrawLine(pen,cx,y+1.5f,cx,cy);
+                    break;
+            }
         }
     }
     protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e){
-        using(var border=new Pen(Palette.Border))
-            e.Graphics.DrawLine(border,8,e.Item.Height/2,e.Item.Width-8,e.Item.Height/2);
+        using(var border=new Pen(Color.FromArgb(46,255,255,255)))
+            e.Graphics.DrawLine(border,14,e.Item.Height/2,e.Item.Width-14,e.Item.Height/2);
     }
+    // Text is positioned here (WinForms ignores item padding for these owner-drawn rows).
+    protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e){
+        var item=e.Item;
+        int left=item.Name=="header"?50:item.Name=="phase"?36:item is ToolStripLabel?16:42;
+        int right=item.Name=="header"?70:item.Tag is bool?62:12;
+        if(item.Name=="phase")e.TextColor=PhaseColor==Palette.Muted?Palette.Muted:Lighten(PhaseColor);
+        var bounds=new Rectangle(left,0,Math.Max(10,item.Width-left-right),item.Height);
+        TextRenderer.DrawText(e.Graphics,e.Text,e.TextFont,bounds,e.TextColor,
+            TextFormatFlags.Left|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix|TextFormatFlags.EndEllipsis|TextFormatFlags.SingleLine);
+    }
+    static Color Lighten(Color c){return Color.FromArgb(Math.Min(255,c.R+40),Math.Min(255,c.G+40),Math.Min(255,c.B+40));}
 }
 sealed class AgentSelectOverlay:Form {
     readonly Dictionary<string,PlayerProfile> profiles;

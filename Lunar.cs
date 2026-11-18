@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 [assembly: System.Reflection.AssemblyTitle("Lunar")]
 [assembly: System.Reflection.AssemblyProduct("Lunar")]
-[assembly: System.Reflection.AssemblyFileVersion("1.92.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.93.0.0")]
 
 namespace Lunar {
 static class Json {
@@ -655,6 +655,7 @@ class Window:LunarForm,IMessageFilter {
     void MarkPage(NavButton active){
         foreach(var button in new[]{homeNav,liveNav,friendsNav,trackerNav,storeNav,crosshairNav,settingsNav})button.Active=button==active;
     }
+    internal DesktopIntegration Desktop{get{return desktop;}}
     internal string DiagnosticsText{get{return "Lunar "+LunarUpdates.DisplayVersion+"\r\n"+diagnostics;}}
     void ShowInfo(string title,string text,bool copyable){
         using(var dialog=new Form{Text=title,Size=new Size(640,440),StartPosition=FormStartPosition.CenterParent,BackColor=Palette.Panel,ForeColor=Palette.Text,Padding=new Padding(22)}){
@@ -1084,6 +1085,22 @@ static class Program {
                     File.WriteAllText(Path.ChangeExtension(args[1],".txt"),"before="+a+" | after="+b2+" | wall="+wall.ToString("F2")+" | decoded_fps="+(total/wall).ToString("F1")+" | shown_fps="+((total-dropped)/wall).ToString("F1")+" | dropped="+dropped);}
                 catch(Exception e){File.WriteAllText(Path.ChangeExtension(args[1],".txt"),"before="+a+" | after="+b2+" | "+e.Message);}
                 using(var b=new Bitmap(form.Width,form.Height)){using(var g=Graphics.FromImage(b)){var hdc=g.GetHdc();try{PrintWindow(form.Handle,hdc,2);}finally{g.ReleaseHdc(hdc);}}b.Save(args[1]);}
+            }
+            return 0;
+        }
+        if(args.Length==2 && args[0]=="--render-tray") {
+            using(var window=new Window(false)){
+                var desktop=window.Desktop;
+                int n=0;
+                foreach(var phase in new[]{"WAITING","AGENT SELECT","IN MATCH"}){
+                    desktop.PreviewTray(phase,phase=="IN MATCH");
+                    var menu=desktop.TrayMenu;
+                    menu.Show(new Point(-2000,-2000));
+                    var stop=DateTime.UtcNow.AddSeconds(.8);while(DateTime.UtcNow<stop){Application.DoEvents();System.Threading.Thread.Sleep(15);}
+                    using(var b=new Bitmap(menu.Width,menu.Height)){menu.DrawToBitmap(b,new Rectangle(0,0,b.Width,b.Height));b.Save(System.IO.Path.ChangeExtension(args[1],"."+(n++)+".png"));}
+                    menu.Close();
+                }
+                window.Close();
             }
             return 0;
         }
