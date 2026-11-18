@@ -945,7 +945,13 @@ class ProfileCanvas:Control {
         T(g,score,12,accent,new Rectangle(scoreX,row.Y+7,row.Width/5,25),true);
         int columnWidth=row.X+row.Width*56/100-scoreX-8;
         int pillWidth=ResultPill(g,match,accent,new Point(scoreX,row.Y+33),columnWidth);
-        MvpBadge(g,match,new Point(scoreX+pillWidth+6,row.Y+33),columnWidth-pillWidth-6);
+        // MVP badge adapts to the width: next to the result, else next to the score, else a star only. Never hidden.
+        if(match.Mvp!=MvpKind.None){
+            int scoreWidth;using(var scoreFont=new Font("Segoe UI",12,FontStyle.Bold))scoreWidth=LunarText.MeasureText(g,score,scoreFont,Size.Empty,CanvasText).Width;
+            if(!MvpBadge(g,match,new Point(scoreX+pillWidth+6,row.Y+33),columnWidth-pillWidth-6,false)&&
+               !MvpBadge(g,match,new Point(scoreX+scoreWidth+8,row.Y+11),columnWidth-scoreWidth-8,false))
+                MvpBadge(g,match,new Point(scoreX+scoreWidth+6,row.Y+11),Math.Max(26,columnWidth-scoreWidth-6),true);
+        }
         MatchMetric(g,row,56,match.Kda,"K / D / A");
         MatchMetric(g,row,74,StatsMetrics.F(match.Metrics.HS,"%"),"HS%");
         var stats=match.Metrics;
@@ -976,17 +982,20 @@ class ProfileCanvas:Control {
     }
     // ★ MVP (gold) or ★ TEAM MVP (silver) next to the score.
     static readonly Color MvpGold=Color.FromArgb(246,201,92),MvpSilver=Color.FromArgb(196,204,218);
-    static void MvpBadge(Graphics g,MatchRow match,Point origin,int maxWidth){
-        if(match.Mvp==MvpKind.None||maxWidth<40)return;
+    // Returns false when the badge does not fit in maxWidth (the caller then tries another spot).
+    static bool MvpBadge(Graphics g,MatchRow match,Point origin,int maxWidth,bool starOnly){
+        if(match.Mvp==MvpKind.None)return true;
         bool gold=match.Mvp==MvpKind.Match;
         string label="★ "+LunarLanguage.Translate(gold?"MATCH MVP":"TEAM MVP");
         var size=LunarText.MeasureText(g,label,PillFont,Size.Empty,CanvasText);
         // Not enough room before the K/D/A column: short "★ MVP" (gold = match, silver = team).
         if(size.Width+16>maxWidth){label="★ MVP";size=LunarText.MeasureText(g,label,PillFont,Size.Empty,CanvasText);}
-        if(size.Width+16>maxWidth)return;
-        var badge=new Rectangle(origin.X,origin.Y,size.Width+16,18);
+        if(starOnly){label="★";size=LunarText.MeasureText(g,label,PillFont,Size.Empty,CanvasText);}
+        else if(size.Width+16>maxWidth)return false;
+        var badge=new Rectangle(origin.X,origin.Y,Math.Max(22,size.Width+(starOnly?10:16)),18);
         var color=gold?MvpGold:MvpSilver;
         Pill(g,badge,label,Color.FromArgb(gold?64:46,color),Color.FromArgb(170,color),Lighter(color,10));
+        return true;
     }
     static void MatchMetric(Graphics g,Rectangle row,int position,string value,string label) {
         int x=row.X+row.Width*position/100;
