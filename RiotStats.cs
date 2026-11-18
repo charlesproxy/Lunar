@@ -205,12 +205,14 @@ static class RiotStatsClient {
                             using(var stream=await request.GetRequestStreamAsync().ConfigureAwait(false))await stream.WriteAsync(bytes,0,bytes.Length,timeout.Token).ConfigureAwait(false);
                         }
                         using(var response=(HttpWebResponse)await request.GetResponseAsync().ConfigureAwait(false)){
+                            LunarLog.Write("riot",method+" "+LogPath(url)+" → "+(int)response.StatusCode);
                             if(redirect)return response.Headers["Location"]??"";
                             using(var reader=new StreamReader(response.GetResponseStream()))return Json.Codec.DeserializeObject(await reader.ReadToEndAsync().ConfigureAwait(false));
                         }
                     }catch(WebException error){
                         cancel.ThrowIfCancellationRequested();
                         using(var response=error.Response as HttpWebResponse){
+                            LunarLog.Write("riot",method+" "+LogPath(url)+" → "+(response!=null?((int)response.StatusCode).ToString():error.Status.ToString()));
                             if(response!=null)throw Failure((int)response.StatusCode,response.Headers["Retry-After"]);
                             throw new RiotStatsException(0,timeout.IsCancellationRequested?"Riot request timed out.":"Could not connect to Riot.");
                         }
@@ -343,7 +345,10 @@ static class RiotStatsClient {
         }
         return profile;
     }
+    // Host + path only (no query string); IDs are scrubbed by the log itself.
+    static string LogPath(string url){Uri uri;return Uri.TryCreate(url,UriKind.Absolute,out uri)?uri.Host+uri.AbsolutePath:"?";}
     static void AddError(PlayerProfile profile,RiotStatsException error,string section){
+        LunarLog.Write("profile",section+" failed: HTTP "+error.Status+" · "+error.Message);
         string text=error.Status==404?"Riot did not return data for this player.":error.Message;
         // Rank and history usually fail for the same reason: say it once, without a section prefix.
         if(error.Status==401||error.Status==0){if(!profile.Message.Contains(text))profile.Message+=text+" ";}

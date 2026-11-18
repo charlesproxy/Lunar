@@ -465,6 +465,7 @@ class SearchView:UserControl {
         SetFeedback("",false);
     }
     void SetFeedback(string message,bool error){
+        if(error)LunarLog.Write("tracker","search error: "+message);
         feedback.ForeColor=error?Palette.Red:Palette.Muted;
         feedback.Text=message;
     }

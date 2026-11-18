@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 [assembly: System.Reflection.AssemblyTitle("Lunar")]
 [assembly: System.Reflection.AssemblyProduct("Lunar")]
-[assembly: System.Reflection.AssemblyFileVersion("1.94.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.95.0.0")]
 
 namespace Lunar {
 static class Json {
@@ -143,26 +143,35 @@ partial class RiotReader {
         catch(Exception) { return new Snapshot {Status="Unexpected client response",Detail="The service may have changed its response format.",Delay=15000}; }
         finally { basic=access=entitlement=null; }
     }
+    bool tracing; // log every step (only for profile/tracker session checks, not the 3-second live poll)
+    void Trace(string message){if(tracing)LunarLog.Write("session",message);}
+    static string ProcessNameOf(int pid){try{using(var p=Process.GetProcessById(pid))return p.HasExited?"(exited)":p.ProcessName;}catch(Exception){return "(not running)";}}
     Snapshot InitializeSession(bool requireGame=true,bool fetchCurrentVersion=false) {
         if(requireGame&&!HasProcess("VALORANT-Win64-Shipping")) { names.Clear(); nameMatch=""; return new Snapshot(); }
-        string[] lf=ReadShared(Path.Combine(local,@"Riot Games\Riot Client\Config\lockfile"),4096).Trim().Split(':');
+        string lockPath=Path.Combine(local,@"Riot Games\Riot Client\Config\lockfile");
+        Trace("lockfile "+(File.Exists(lockPath)?"found":"MISSING")+" (LocalAppData\\Riot Games\\Riot Client\\Config)");
+        string[] lf=ReadShared(lockPath,4096).Trim().Split(':');
         int port;
-        if(lf.Length!=5 || !Int32.TryParse(lf[2],out port) || port<1 || port>65535 || lf[4]!="https") throw new InvalidOperationException();
+        if(lf.Length!=5 || !Int32.TryParse(lf[2],out port) || port<1 || port>65535 || lf[4]!="https"){Trace("lockfile unreadable: "+lf.Length+" fields, protocol '"+(lf.Length>4?lf[4]:"")+"'");throw new InvalidOperationException();}
         int clientPid;
-        if(fetchCurrentVersion&&(!Int32.TryParse(lf[1],out clientPid)||!ClientProcessAlive(clientPid)))
-            return new Snapshot {Status="Waiting for Riot Client"};
+        bool pidOk=Int32.TryParse(lf[1],out clientPid);
+        Trace("lockfile process: "+(pidOk?ProcessNameOf(clientPid):"(no pid)")+" · running Riot processes: "+String.Join(", ",Process.GetProcesses().Select(p=>{try{return p.ProcessName;}catch(Exception){return "";}}).Where(n=>n.IndexOf("riot",StringComparison.OrdinalIgnoreCase)>=0||n.IndexOf("valorant",StringComparison.OrdinalIgnoreCase)>=0).Distinct()));
+        if(fetchCurrentVersion&&(!pidOk||!ClientProcessAlive(clientPid))){Trace("Riot Client process not accepted → 'Waiting for Riot Client'");return new Snapshot {Status="Waiting for Riot Client"};}
         basic=Convert.ToBase64String(Encoding.UTF8.GetBytes("riot:"+lf[3])); origin="https://127.0.0.1:"+port;
-        if(fetchCurrentVersion&&!ReadSessionAuthorization())
-            return new Snapshot {Status="Waiting for Riot Client sign-in"};
+        if(fetchCurrentVersion&&!ReadSessionAuthorization()){Trace("entitlements: no access/entitlement token (not signed in?)");return new Snapshot {Status="Waiting for Riot Client sign-in"};}
+        Trace("entitlements: signed in");
         var sessions=Request(origin+"/product-session/v1/external-sessions","GET",null,true,fetchCurrentVersion) as Dictionary<string,object>;
         version=""; region=""; shard="";
+        Trace("external sessions: "+(sessions==null?"none":sessions.Count+" · products: "+String.Join(", ",sessions.Values.Select(v=>Json.S(v,"productId")).Distinct())));
         if(sessions!=null) foreach(var session in sessions.Values) {
             if(Json.S(session,"productId")!="valorant") continue;
             version=Json.S(session,"version");
             string args=String.Join(" ",Json.A(Json.Get(Json.Get(session,"launchConfiguration"),"arguments")).Select(x=>Convert.ToString(x)));
             var r=Regex.Match(args,@"-ares-deployment=([a-z]+)"); if(r.Success) region=r.Groups[1].Value;
         }
+        Trace("from VALORANT session: version "+(version==""?"-":version)+" · region "+(region==""?"-":region));
         string logPath=Path.Combine(local,@"VALORANT\Saved\Logs\ShooterGame.log");
+        Trace("ShooterGame.log "+(File.Exists(logPath)?"found":"missing"));
         if(File.Exists(logPath)) {
             string log=ReadShared(logPath,4*1024*1024);
             var hosts=Regex.Matches(log,@"https://glz-(na|latam|br|eu|ap|kr)-1\.(na|eu|ap|kr|pbe)\.a\.pvp\.net");
@@ -170,7 +179,8 @@ partial class RiotReader {
         }
         if(fetchCurrentVersion&&!version.StartsWith("release-",StringComparison.OrdinalIgnoreCase))version=RiotStore.CurrentClientVersion();
         if(version==""){try{using(var stream=typeof(RiotReader).Assembly.GetManifestResourceStream("version.json"))using(var rd=new StreamReader(stream))version=Json.S(Json.Get(Json.Codec.DeserializeObject(rd.ReadToEnd()),"data"),"riotClientVersion");}catch{}}
-        if(region==""){try{var location=Request(origin+"/riotclient/region-locale","GET",null,true,false);region=RegionFromClient(Json.S(location,"region"),Json.S(location,"webRegion"));}catch(ApiFailure){}catch(WebException){}}
+        if(region==""){try{var location=Request(origin+"/riotclient/region-locale","GET",null,true,false);region=RegionFromClient(Json.S(location,"region"),Json.S(location,"webRegion"));Trace("region-locale: region '"+Json.S(location,"region")+"' webRegion '"+Json.S(location,"webRegion")+"' → '"+region+"'");}catch(ApiFailure e){Trace("region-locale failed: HTTP "+e.Code);}catch(WebException e){Trace("region-locale failed: "+e.Status);}}
+        Trace("result: region '"+region+"' · shard '"+shard+"' · version '"+version+"'");
         if(shard=="") shard=(region=="br"||region=="latam")?"na":region;
         if((!fetchCurrentVersion&&!Regex.IsMatch(region,@"^(na|latam|br|eu|ap|kr)$")) || !Regex.IsMatch(shard,@"^(na|eu|ap|kr|pbe)$") || version=="")
             return new Snapshot {Status="Detecting region and client version",Detail="Waiting for the client to finish loading."};
@@ -196,6 +206,8 @@ partial class RiotReader {
     // Why the Riot Client session could not be used (shown instead of a generic "sign in" message).
     internal static string LastSessionProblem="";
     internal RiotStatisticsSession GetStatisticsSession(){
+        tracing=true;
+        LunarLog.Write("session","--- profile session check ---");
         try{
             var pending=InitializeSession(false,true);
             if(pending!=null){LastSessionProblem=pending.Status=="Waiting for Riot Client"?"Open Riot Client and sign in.":pending.Status=="Waiting for Riot Client sign-in"?"Sign in to Riot Client to search profiles. Lunar will reuse that session automatically.":"Could not detect your Riot region. Open VALORANT once, then try again.";return null;}
@@ -203,12 +215,14 @@ partial class RiotReader {
             if(String.IsNullOrWhiteSpace(region)){LastSessionProblem="Could not detect your Riot region. Open VALORANT once, then try again.";return null;}
             if(String.IsNullOrWhiteSpace(version)){LastSessionProblem="Riot client version unavailable.";return null;}
             LastSessionProblem="";
+            LunarLog.Write("session","OK · region "+region+" · version "+version);
             return new RiotStatisticsSession{Access=access,Entitlement=entitlement,Version=version,Region=region};
-        }catch(FileNotFoundException){LastSessionProblem="Open Riot Client and sign in.";return null;}
-        catch(DirectoryNotFoundException){LastSessionProblem="Open Riot Client and sign in.";return null;}
-        catch(InvalidOperationException){LastSessionProblem="Open Riot Client and sign in.";return null;}
-        catch(Exception){LastSessionProblem="Could not connect to Riot Client. Open it and sign in.";return null;}
-        finally{basic=access=entitlement=null;}
+        }catch(FileNotFoundException e){LastSessionProblem="Open Riot Client and sign in.";LunarLog.Error("session","lockfile not found",e);return null;}
+        catch(DirectoryNotFoundException e){LastSessionProblem="Open Riot Client and sign in.";LunarLog.Error("session","Riot Client folder not found",e);return null;}
+        catch(InvalidOperationException e){LastSessionProblem="Open Riot Client and sign in.";LunarLog.Error("session","invalid Riot Client state",e);return null;}
+        catch(ApiFailure e){LastSessionProblem="Could not connect to Riot Client. Open it and sign in.";LunarLog.Write("session","local Riot Client request failed: HTTP "+e.Code);return null;}
+        catch(Exception e){LastSessionProblem="Could not connect to Riot Client. Open it and sign in.";LunarLog.Error("session","unexpected failure",e);return null;}
+        finally{if(LastSessionProblem!="")LunarLog.Write("session","FAILED → "+LastSessionProblem);tracing=false;basic=access=entitlement=null;}
     }
     bool ReadSessionAuthorization(){
         var auth=Request(origin+"/entitlements/v1/token","GET",null,true,false);
@@ -976,10 +990,24 @@ class Window:LunarForm,IMessageFilter {
             reset.Tick+=delegate{reset.Stop();reset.Dispose();if(!checkButton.IsDisposed)checkButton.Text=desktop.UpdateReady?"Update ready":"You're up to date";};
             reset.Start();
         };
+        var supportTitle=new Label{Text="Support",AutoSize=false,Size=new Size(360,24),ForeColor=Palette.Text,BackColor=Color.Transparent,Font=labelFont};
+        var supportHelp=new Label{Text="If something doesn't work, export the log and send it. It has no passwords, tokens or player names.",AutoSize=false,Size=new Size(420,40),ForeColor=Palette.Muted,BackColor=Color.Transparent,Font=bodyFont};
+        var exportButton=new SoftButton{Text="Export log",Size=new Size(150,38),FlatStyle=FlatStyle.Flat,BackColor=Palette.Raised,ForeColor=Palette.Text,Font=new Font("Segoe UI",9,FontStyle.Bold),Cursor=Cursors.Hand,TextAlign=ContentAlignment.MiddleCenter};
+        exportButton.FlatAppearance.BorderSize=0;
+        exportButton.Click+=delegate{
+            try{
+                // A fresh session check first, so the log always contains the current Riot Client state.
+                new RiotReader().GetStatisticsSession();
+                LunarLog.Export();
+                exportButton.Text="Saved to Desktop";
+            }catch(Exception error){LunarLog.Error("app","export failed",error);exportButton.Text="Try again";}
+            var reset=new Timer{Interval=4000};reset.Tick+=delegate{reset.Stop();reset.Dispose();if(!exportButton.IsDisposed)exportButton.Text="Export log";};reset.Start();
+        };
         panel.Cards=new[]{
             new SettingsCard{Glyph=SettingsGlyph.Language,Title=languageTitle,Body=new[]{languageDescription},Action=languageSelect},
             new SettingsCard{Glyph=SettingsGlyph.Keyboard,Title=hotkeyTitle,Body=new[]{hotkeyHelp},Action=changeHotkeyButton,Keys=()=>desktop==null?HotkeyPreference.Current.Display:desktop.HotkeyDisplay},
-            new SettingsCard{Glyph=SettingsGlyph.Update,Title=updatesTitle,Body=new[]{languageHelp},Action=checkButton,Badge=LunarUpdates.DisplayVersion}
+            new SettingsCard{Glyph=SettingsGlyph.Update,Title=updatesTitle,Body=new[]{languageHelp},Action=checkButton,Badge=LunarUpdates.DisplayVersion},
+            new SettingsCard{Glyph=SettingsGlyph.Support,Title=supportTitle,Body=new[]{supportHelp},Action=exportButton}
         };
         foreach(var card in panel.Cards){panel.Controls.Add(card.Title);foreach(var body in card.Body)panel.Controls.Add(body);panel.Controls.Add(card.Action);}
         panel.Controls.Add(hotkeyCurrent);
@@ -1079,6 +1107,7 @@ static class Program {
         if(args.Length==1&&args[0]=="--apply-update")return LunarUpdates.Apply();
         if(args.Contains("--self-test")) {SearchChecks.Run();Tests.Run();HistoryChecks.Run();RiotStatsChecks.Run();return ProfileChecks.Run();}
         if(args.Contains("--language-test"))return LunarLanguage.Run();
+        if(args.Contains("--export-log")){new RiotReader().GetStatisticsSession();Console.WriteLine(LunarLog.Export());return 0;}
         if(args.Contains("--session-probe")){var probe=new RiotReader().GetStatisticsSession();Console.WriteLine(probe==null?"session: unavailable — "+RiotReader.LastSessionProblem:"session: ok · region "+probe.Region+" · version "+probe.Version);return 0;}
         if(args.Length==2&&args[0]=="--dump-tile"){
             var row=new MatchRow{Map="Ascent",MapId=TrackArt.MapId("Ascent")};
@@ -1161,6 +1190,7 @@ static class Program {
             using(var window=new Window(true)) { if(args[0]!="--render")window.Demo();if(args[0]=="--render-small")window.Size=window.MinimumSize;window.Show();Application.DoEvents();{var warm=DateTime.UtcNow.AddSeconds(6);while(DateTime.UtcNow<warm){Application.DoEvents();System.Threading.Thread.Sleep(40);}}if(args[0]=="--render-tracker"){window.ShowTracker();Application.DoEvents();using(var b=new Bitmap(window.Width,window.Height)){window.DrawToBitmap(b,new Rectangle(0,0,b.Width,b.Height));b.Save(args[1]);}}else if(args[0]=="--render-history")window.RenderHistory(args[1]);else if(args[0]=="--render-matches")window.RenderTab(args[1],1);else if(args[0]=="--render-agents")window.RenderTab(args[1],2);else if(args[0]=="--render-maps")window.RenderTab(args[1],3);else if(args[0]=="--render-detail")window.RenderDetail(args[1]);else if(args[0]=="--render-store")window.RenderStore(args[1]);else if(args[0]=="--render-settings")window.RenderSettings(args[1]);else if(args[0]=="--render-fullscreen")window.RenderFullscreen(args[1]);else using(var bitmap=new Bitmap(window.Width,window.Height)) {window.DrawToBitmap(bitmap,new Rectangle(0,0,bitmap.Width,bitmap.Height));bitmap.Save(args[1]);}window.Close();}return 0;
         }
         DesktopShortcut.Ensure();
+        LunarLog.Start();
         // Single instance: opening Lunar again just brings the running window to the front (no second tray icon).
         bool first;
         var instance=new System.Threading.Mutex(true,@"Local\LunarSingleInstance",out first);
