@@ -944,9 +944,8 @@ class ProfileCanvas:Control {
         string score=match.Score=="—"?ResultName(match.Result):match.Score;
         T(g,score,12,accent,new Rectangle(scoreX,row.Y+7,row.Width/5,25),true);
         int columnWidth=row.X+row.Width*56/100-scoreX-8;
-        ResultPill(g,match,accent,new Point(scoreX,row.Y+33),columnWidth);
-        int scoreWidth;using(var scoreFont=new Font("Segoe UI",12,FontStyle.Bold))scoreWidth=LunarText.MeasureText(g,score,scoreFont,Size.Empty,CanvasText).Width;
-        MvpBadge(g,match,new Point(scoreX+scoreWidth+8,row.Y+11),columnWidth-scoreWidth-8);
+        int pillWidth=ResultPill(g,match,accent,new Point(scoreX,row.Y+33),columnWidth);
+        MvpBadge(g,match,new Point(scoreX+pillWidth+6,row.Y+33),columnWidth-pillWidth-6);
         MatchMetric(g,row,56,match.Kda,"K / D / A");
         MatchMetric(g,row,74,StatsMetrics.F(match.Metrics.HS,"%"),"HS%");
         var stats=match.Metrics;
@@ -967,12 +966,13 @@ class ProfileCanvas:Control {
         LunarText.DrawText(g,text,PillFont,pill,textColor,CanvasText|TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);
     }
     // Filled result badge with the RR change inside: "WIN · +18 RR", "LOSS · -16 RR", "DRAW".
-    static void ResultPill(Graphics g,MatchRow match,Color accent,Point origin,int maxWidth){
+    static int ResultPill(Graphics g,MatchRow match,Color accent,Point origin,int maxWidth){
         string label=match.Result==Outcome.Win?"WIN":match.Result==Outcome.Loss?"LOSS":match.Result==Outcome.Draw?"DRAW":"No result";
         if(match.RRChange.HasValue)label+=" · "+match.RRChange.Value.ToString("+0;-0;0")+" RR";
         var size=LunarText.MeasureText(g,label,PillFont,Size.Empty,CanvasText);
         var pill=new Rectangle(origin.X,origin.Y,Math.Min(maxWidth,size.Width+18),18);
         Pill(g,pill,label,Color.FromArgb(match.Result==Outcome.Draw?70:62,accent),Color.FromArgb(160,accent),Lighter(accent,34));
+        return pill.Width;
     }
     // ★ MVP (gold) or ★ TEAM MVP (silver) next to the score.
     static readonly Color MvpGold=Color.FromArgb(246,201,92),MvpSilver=Color.FromArgb(196,204,218);
@@ -981,7 +981,10 @@ class ProfileCanvas:Control {
         bool gold=match.Mvp==MvpKind.Match;
         string label="★ "+LunarLanguage.Translate(gold?"MATCH MVP":"TEAM MVP");
         var size=LunarText.MeasureText(g,label,PillFont,Size.Empty,CanvasText);
-        var badge=new Rectangle(origin.X,origin.Y,Math.Min(maxWidth,size.Width+16),18);
+        // Not enough room before the K/D/A column: short "★ MVP" (gold = match, silver = team).
+        if(size.Width+16>maxWidth){label="★ MVP";size=LunarText.MeasureText(g,label,PillFont,Size.Empty,CanvasText);}
+        if(size.Width+16>maxWidth)return;
+        var badge=new Rectangle(origin.X,origin.Y,size.Width+16,18);
         var color=gold?MvpGold:MvpSilver;
         Pill(g,badge,label,Color.FromArgb(gold?64:46,color),Color.FromArgb(170,color),Lighter(color,10));
     }

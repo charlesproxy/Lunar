@@ -225,8 +225,24 @@ partial class RiotReader {
                     map=="Map unavailable"&&ownerPhase==expected&&ownerMap!="Map unavailable"&&
                     String.Equals(snapshot.Map,ownerMap,StringComparison.OrdinalIgnoreCase));
             if(player!=null&&String.IsNullOrEmpty(player.PartyId)&&party!=""&&sameMatch)player.PartyId=party;
-            if(own)ApplyDiscordScore(snapshot,presence);
+            if(own){ApplyDiscordScore(snapshot,presence);PresenceSummary=DescribePresence(entry,presence,snapshot);}
         }
+    }
+    // Diagnostics only: which presence fields VALORANT sends (names, phase and score; no IDs, names or tokens).
+    internal static string PresenceSummary="Presence: not read yet";
+    static string DescribePresence(object entry,object flat,Snapshot snapshot){
+        var raw=Json.Get(entry,"private");
+        object root=null;
+        try{var text=raw as string;if(!String.IsNullOrEmpty(text))root=Json.Codec.DeserializeObject(text.StartsWith("{",StringComparison.Ordinal)?text:Encoding.UTF8.GetString(Convert.FromBase64String(text)));else root=raw;}catch(Exception){}
+        var top=root as System.Collections.Generic.Dictionary<string,object>;
+        var sections=PresenceSections.Where(name=>top!=null&&top.ContainsKey(name)).ToArray();
+        var scoreKeys=(flat as System.Collections.Generic.Dictionary<string,object>)==null?new string[0]:
+            ((System.Collections.Generic.Dictionary<string,object>)flat).Keys.Where(k=>k.IndexOf("Score",StringComparison.OrdinalIgnoreCase)>=0||k.IndexOf("Round",StringComparison.OrdinalIgnoreCase)>=0).ToArray();
+        return "Presence: "+(sections.Length>0?"nested ("+String.Join(", ",sections)+")":"flat")+
+            "\r\nPresence phase: "+Json.S(flat,"sessionLoopState")+" · map field: "+(Json.S(flat,"matchMap")!=""?"yes":"no")+
+            "\r\nPresence score fields: "+(scoreKeys.Length==0?"none":String.Join(", ",scoreKeys.Select(k=>k+"="+Json.S(flat,k))))+
+            "\r\nLive score: "+(snapshot.AllyScore.HasValue?snapshot.AllyScore+" - "+snapshot.EnemyScore:"unavailable")+
+            "\r\nPresence top-level fields: "+(top==null?"-":String.Join(", ",top.Keys.Where(k=>!k.EndsWith("Id",StringComparison.Ordinal)||k=="queueId").Take(40)));
     }
     internal static void ApplyDiscordScore(Snapshot snapshot,object presence){
         if(snapshot.Status!="IN MATCH"||Json.S(presence,"sessionLoopState")!="INGAME")return;
@@ -317,6 +333,7 @@ sealed class DesktopIntegration:IDisposable {
         menu.Items.Add(new ToolStripSeparator());
         discordMenu=TrayAction("Discord Presence",ToggleDiscord);
         TrayAction("Open Lunar",delegate{OpenMain();});
+        TrayAction("Copy diagnostics",delegate{try{Clipboard.SetText(main.DiagnosticsText);tray.ShowBalloonTip(3000,"Lunar",LunarLanguage.Translate("Diagnostics copied. Paste them in the chat."),ToolTipIcon.Info);}catch(Exception){}});
         installUpdate=TrayAction("Install update",delegate{ExitWithUpdate(true);});
         installUpdate.Available=false;
         TrayAction("Exit Lunar",delegate{ExitWithUpdate(false);}).ForeColor=Color.FromArgb(236,153,172);
@@ -1133,7 +1150,7 @@ static class LiveMatchArt {
         if(profile==null)return;
         int i=0;
         foreach(var match in profile.Matches.Where(m=>m.Completed&&(m.Result==Outcome.Win||m.Result==Outcome.Loss||m.Result==Outcome.Draw))
-                    .OrderByDescending(m=>m.Started).Take(5)){
+                    .OrderByDescending(m=>m.Started).Take(5).Reverse()){ // read left to right: oldest → newest (newest at the right)
             var rect=new Rectangle(x+i*step,y,16,16);
             Color fill=match.Result==Outcome.Win?Color.FromArgb(28,105,74):
                 match.Result==Outcome.Loss?Color.FromArgb(147,48,70):Color.FromArgb(64,55,79);

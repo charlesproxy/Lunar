@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 [assembly: System.Reflection.AssemblyTitle("Lunar")]
 [assembly: System.Reflection.AssemblyProduct("Lunar")]
-[assembly: System.Reflection.AssemblyFileVersion("1.89.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.90.0.0")]
 
 namespace Lunar {
 static class Json {
@@ -251,7 +251,7 @@ partial class RiotReader {
         } else if(unresolved.Length>0) localStatus="rate limit reached";
         int rawCount=pregame?Json.A(Json.Get(Json.Get(data,"AllyTeam"),"Players")).Count()+Json.A(Json.Get(Json.Get(data,"EnemyTeam"),"Players")).Count():Json.A(Json.Get(data,"Players")).Count();
         int resolvedCount=all.Count(p=>names.ContainsKey(p.Id));
-        snap.Diagnostics="Lunar 1.67\r\nPhase: "+snap.Status+"\r\nPlayers in response: "+rawCount+"\r\nAllies: "+snap.Allies.Count+"\r\nOpponents: "+snap.Enemies.Count+"\r\nResolved names: "+resolvedCount+"/"+all.Count+"\r\nRemote service: "+remoteStatus+"\r\nLocal Riot Client: "+localStatus+"\r\nDiagnostics exclude tokens, IDs, names and raw responses.";
+        snap.Diagnostics="Phase: "+snap.Status+"\r\nPlayers in response: "+rawCount+"\r\nAllies: "+snap.Allies.Count+"\r\nOpponents: "+snap.Enemies.Count+"\r\nResolved names: "+resolvedCount+"/"+all.Count+"\r\nRemote service: "+remoteStatus+"\r\nLocal Riot Client: "+localStatus+"\r\nDiagnostics exclude tokens, IDs, names and raw responses.";
         ApplyNames(all,names);
         snap.Self=all.FirstOrDefault(p=>p.Id==self)??GetSelfPlayer();
         snap.Detail=(pregame?"Agent select":"Match in progress")+" · allies: "+snap.Allies.Count+" · opponents: "+snap.Enemies.Count+" · names: "+resolvedCount+"/"+all.Count;
@@ -655,6 +655,7 @@ class Window:LunarForm,IMessageFilter {
     void MarkPage(NavButton active){
         foreach(var button in new[]{homeNav,liveNav,friendsNav,trackerNav,storeNav,crosshairNav,settingsNav})button.Active=button==active;
     }
+    internal string DiagnosticsText{get{return "Lunar "+LunarUpdates.DisplayVersion+"\r\n"+diagnostics;}}
     void ShowInfo(string title,string text,bool copyable){
         using(var dialog=new Form{Text=title,Size=new Size(640,440),StartPosition=FormStartPosition.CenterParent,BackColor=Palette.Panel,ForeColor=Palette.Text,Padding=new Padding(22)}){
             var box=new TextBox{Multiline=true,ReadOnly=true,Dock=DockStyle.Fill,Text=text,ScrollBars=ScrollBars.None,BackColor=Palette.Panel,ForeColor=Palette.Text,BorderStyle=BorderStyle.None,Font=new Font("Segoe UI",11)};
@@ -679,7 +680,7 @@ class Window:LunarForm,IMessageFilter {
         if(!Object.ReferenceEquals(home.Profile,own)||!String.Equals(previousSelf==null?null:previousSelf.Name,s.Self==null?null:s.Self.Name))
             home.UpdateProfile(own);
         if(profiles.Count>60){var active=new HashSet<string>(s.Allies.Concat(s.Enemies).Select(p=>p.Id));foreach(var key in profiles.Keys.Where(k=>!active.Contains(k)&&(selected==null||selected.Id!=k)).ToList())profiles.Remove(key);}
-        diagnostics=s.Diagnostics+"\r\nStatus: "+s.Status+"\r\n"+s.Detail;surface.Data=s;surface.Updated="Updated at "+DateTime.Now.ToString("HH:mm:ss");surface.Invalidate();if(desktop!=null)desktop.Update(s);RefreshLiveCard();ScheduleStats();
+        diagnostics=s.Diagnostics+"\r\nStatus: "+s.Status+"\r\n"+s.Detail+"\r\n"+RiotReader.PresenceSummary;surface.Data=s;surface.Updated="Updated at "+DateTime.Now.ToString("HH:mm:ss");surface.Invalidate();if(desktop!=null)desktop.Update(s);RefreshLiveCard();ScheduleStats();
         if(!isPreview)QueueLiveProfiles();
     }
     void ScheduleStats(){

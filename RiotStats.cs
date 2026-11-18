@@ -317,6 +317,12 @@ static class RiotStatsClient {
             try{
                 var page=await history.ConfigureAwait(false);
                 try{await rrTask.ConfigureAwait(false);}catch(OperationCanceledException){throw;}catch(Exception){}
+                ApplyPeakFromUpdates(profile);
+                // Peak RR still unknown for a profile someone opened: look a little further back (up to 100 matches).
+                if(!background&&profile.PeakTier>=3&&profile.PeakRR<0){
+                    try{await LoadRR(player,100,cancel).ConfigureAwait(false);}catch(OperationCanceledException){throw;}catch(Exception){}
+                    ApplyPeakFromUpdates(profile);
+                }
                 profile.Message+=(page.CompetitiveOnly?"Only competitive history is available for this player. ":"");
                 foreach(var item in page.Items.OrderByDescending(m=>HistoryLogic.N(Json.Get(m,"matchInfo"),"gameStartMillis"))){
                     AccountLevels.Apply(profile,item,player.Id);
@@ -344,8 +350,24 @@ static class RiotStatsClient {
     // RR gained/lost per competitive match, from Riot's competitive updates (match history itself has no RR).
     static readonly System.Collections.Concurrent.ConcurrentDictionary<string,int> rrByMatch=new System.Collections.Concurrent.ConcurrentDictionary<string,int>(StringComparer.OrdinalIgnoreCase);
     static readonly System.Collections.Concurrent.ConcurrentDictionary<string,int> rrFetched=new System.Collections.Concurrent.ConcurrentDictionary<string,int>(StringComparer.OrdinalIgnoreCase);
-    static void RememberRR(IEnumerable<object> updates){
-        foreach(var u in updates){string match=Json.S(u,"MatchID");if(match!=""&&Json.Get(u,"RankedRatingEarned")!=null)rrByMatch[match]=(int)HistoryLogic.N(u,"RankedRatingEarned");}
+    // Best (tier, RR after the match) seen in a player's competitive updates; used for the peak RR.
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<string,KeyValuePair<int,int>> peakSeen=new System.Collections.Concurrent.ConcurrentDictionary<string,KeyValuePair<int,int>>(StringComparer.OrdinalIgnoreCase);
+    internal static void RememberRR(IEnumerable<object> updates,string player=null){
+        foreach(var u in updates){
+            string match=Json.S(u,"MatchID");
+            if(match!=""&&Json.Get(u,"RankedRatingEarned")!=null)rrByMatch[match]=(int)HistoryLogic.N(u,"RankedRatingEarned");
+            if(player==null||Json.Get(u,"TierAfterUpdate")==null||Json.Get(u,"RankedRatingAfterUpdate")==null)continue;
+            int tier=(int)HistoryLogic.N(u,"TierAfterUpdate"),rr=(int)HistoryLogic.N(u,"RankedRatingAfterUpdate");
+            if(tier<3||rr<0)continue;
+            if(oldActs.Contains(Json.S(u,"SeasonID"))&&tier>=21)tier+=3;
+            peakSeen.AddOrUpdate(player,new KeyValuePair<int,int>(tier,rr),(key,best)=>tier>best.Key||tier==best.Key&&rr>best.Value?new KeyValuePair<int,int>(tier,rr):best);
+        }
+    }
+    // Peak RR from match-by-match updates when the act summaries could not provide it.
+    internal static void ApplyPeakFromUpdates(PlayerProfile profile){
+        KeyValuePair<int,int> best;
+        if(profile==null||profile.PeakTier<3||String.IsNullOrEmpty(profile.Id)||!peakSeen.TryGetValue(profile.Id,out best))return;
+        if(best.Key==profile.PeakTier&&best.Value>profile.PeakRR)profile.PeakRR=best.Value;
     }
     // Fetches competitive updates in pages of 20 until at least `upTo` are known (max 200). Failures are ignored:
     // RR is a nice-to-have and must never break profile loading.
@@ -356,7 +378,7 @@ static class RiotStatsClient {
             while(have<upTo&&have<200){
                 var updates=await Get("/mmr/v1/players/"+id+"/competitiveupdates?startIndex="+have+"&endIndex="+(have+20)+"&queue=competitive",cancel).ConfigureAwait(false);
                 var rows=Json.A(Json.Get(updates,"Matches")).ToList();
-                RememberRR(rows);
+                RememberRR(rows,id);
                 have+=20;rrFetched[id]=rows.Count<20?int.MaxValue/2:have;
                 if(rows.Count<20)return;
             }
@@ -375,7 +397,7 @@ static class RiotStatsClient {
             if(queue!=""&&queue!="competitive")throw new RiotStatsException(404,"Riot history is unavailable for this mode.");
             history=await Get("/mmr/v1/players/"+PlayerId(player)+"/competitiveupdates"+range+"&queue=competitive",cancel).ConfigureAwait(false);
             rows=Json.Get(history,"Matches") as object[];
-            if(rows!=null)RememberRR(rows);
+            if(rows!=null)RememberRR(rows,PlayerId(player));
         }else rows=Json.Get(history,"History") as object[];
         if(rows==null)throw new InvalidOperationException("Riot match history response was not recognized.");
         return new HistoryPage{CompetitiveOnly=fallback,EndReached=AtHistoryEnd(start,size,rows.Length,HistoryLogic.N(history,"Total",-1)),Items=await FetchDetails(rows,Match,cancel).ConfigureAwait(false)};
@@ -482,6 +504,11 @@ static class RiotStatsChecks {
         mmr=Data(new {QueueSkills=new {competitive=new {SeasonalInfoBySeasonID=new Dictionary<string,object>{{"a",new {CompetitiveTier=26,RankedRating=90,WinsByTier=new Dictionary<string,object>{{"27","3"}}}}}}}});
         profile=new PlayerProfile();RiotStatsClient.ApplyRank(profile,mmr,"current");
         Check(profile.PeakTier==27&&profile.PeakRR==-1,"tier reached only by wins has no fabricated RR");
+        RiotStatsClient.RememberRR(new object[]{Data(new {MatchID="m1",TierAfterUpdate=26,RankedRatingAfterUpdate=88,RankedRatingEarned=-12}),Data(new {MatchID="m2",TierAfterUpdate=26,RankedRatingAfterUpdate=97,RankedRatingEarned=21}),Data(new {MatchID="m3",TierAfterUpdate=25,RankedRatingAfterUpdate=99,RankedRatingEarned=18})},"peak-player");
+        profile=new PlayerProfile{Id="peak-player",PeakTier=26,PeakRR=-1};RiotStatsClient.ApplyPeakFromUpdates(profile);
+        Check(profile.PeakRR==97,"peak RR found in match updates at the peak tier");
+        profile=new PlayerProfile{Id="peak-player",PeakTier=27,PeakRR=-1};RiotStatsClient.ApplyPeakFromUpdates(profile);
+        Check(profile.PeakRR==-1,"match updates below the peak tier do not set peak RR");
         var match=Data(new {matchInfo=new {matchId="match",mapId="/Game/Maps/Ascent/Ascent",queueID="competitive",gameStartMillis=1700000000000L,isCompleted=true,completionState="Completed"},players=new object[]{new {subject=player.Id,teamId="Blue",stats=new {kills=1,deaths=0,assists=0,roundsPlayed=1,score=300}},new {subject="enemy",teamId="Red"}},teams=new[]{new {teamId="Blue",roundsWon=1,won=true},new {teamId="Red",roundsWon=0,won=false}},roundResults=new[]{new {playerStats=new[]{new {subject=player.Id,damage=new[]{new {receiver="enemy",damage=150,headshots=1,bodyshots=0,legshots=0}}}}}}});
         var row=RiotStatsClient.ParseArchivedMatch(match,player.Id);
         var summary=new Summary(new[]{row});
