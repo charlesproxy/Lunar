@@ -50,4 +50,4 @@ try {
     gh release create "v$release" $zip $manifest --repo $Repo --title "Lunar $release" --notes $Notes --latest
     if ($LASTEXITCODE -ne 0) { throw 'gh release create failed.' }
 } finally { Pop-Location }
-Write-Output "Published v$release. Installed copies will offer the update within 3 hours (or via Check for updates)."
+Write-Output "Published v$release. Installed copies will offer the update within 30 minutes, or as soon as Lunar is opened."
