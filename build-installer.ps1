@@ -5,7 +5,7 @@ if(!$WixPath){
   $candle=Get-Command candle.exe -ErrorAction SilentlyContinue
   if($candle){$WixPath=Split-Path -Parent $candle.Source}
   else{
-    $candidates=@("${env:ProgramFiles(x86)}\WiX Toolset v3.14\bin","${env:ProgramFiles(x86)}\WiX Toolset v3.11\bin","$env:ProgramFiles\WiX Toolset v3.14\bin","$env:ProgramFiles\WiX Toolset v3.11\bin")
+    $candidates=@("$env:LOCALAPPDATA\Lunar\tools\wix314","${env:ProgramFiles(x86)}\WiX Toolset v3.14\bin","${env:ProgramFiles(x86)}\WiX Toolset v3.11\bin","$env:ProgramFiles\WiX Toolset v3.14\bin","$env:ProgramFiles\WiX Toolset v3.11\bin")
     $WixPath=$candidates|Where-Object {Test-Path (Join-Path $_ 'candle.exe')}|Select-Object -First 1
   }
 }
