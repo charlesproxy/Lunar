@@ -344,6 +344,10 @@ sealed class DesktopIntegration:IDisposable {
         // Diagnostics stay reachable for support: Ctrl+Shift+D in the Lunar window copies them.
         main.KeyPreview=true;
         main.KeyDown+=delegate(object sender,KeyEventArgs e){
+            if(e.Control&&e.Shift&&e.KeyCode==Keys.L){
+                try{new RiotReader().GetStatisticsSession();LunarLog.Export();}catch(Exception error){LunarLog.Error("app","export failed",error);}
+                e.Handled=true;return;
+            }
             if(e.Control&&e.Shift&&e.KeyCode==Keys.D){
                 try{Clipboard.SetText(main.DiagnosticsText);tray.ShowBalloonTip(3000,"Lunar",LunarLanguage.Translate("Diagnostics copied. Paste them in the chat."),ToolTipIcon.Info);}catch(Exception){}
                 e.Handled=true;

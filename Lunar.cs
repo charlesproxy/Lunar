@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 [assembly: System.Reflection.AssemblyTitle("Lunar")]
 [assembly: System.Reflection.AssemblyProduct("Lunar")]
-[assembly: System.Reflection.AssemblyFileVersion("1.98.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.99.0.0")]
 
 namespace Lunar {
 static class Json {
@@ -565,7 +565,7 @@ class Window:LunarForm,IMessageFilter {
     readonly Timer timer=new Timer();readonly BackgroundWorker worker=new BackgroundWorker();readonly RiotReader reader=new RiotReader();
     public Window(bool preview=false){
         isPreview=preview;
-        Icon=Icon.ExtractAssociatedIcon(typeof(Window).Assembly.Location);Text="Lunar";ClientSize=new Size(1220,790);MinimumSize=new Size(1060,750);StartPosition=FormStartPosition.CenterScreen;
+        Icon=AppIcon.Load();Text="Lunar";ClientSize=new Size(1220,790);MinimumSize=new Size(1060,750);StartPosition=FormStartPosition.CenterScreen;
         BackColor=Palette.Bg;ForeColor=Palette.Text;Font=new Font("Segoe UI",10);AutoScaleMode=AutoScaleMode.Dpi;
         var sidebar=new Panel{Dock=DockStyle.Left,Width=198,BackColor=Palette.Sidebar,Padding=new Padding(18)};
         sidebar.Paint+=delegate(object sender,PaintEventArgs e){using(var pen=new Pen(Palette.Border))e.Graphics.DrawLine(pen,sidebar.Width-1,0,sidebar.Width-1,sidebar.Height);};
@@ -995,24 +995,10 @@ class Window:LunarForm,IMessageFilter {
             reset.Tick+=delegate{reset.Stop();reset.Dispose();if(!checkButton.IsDisposed)checkButton.Text=desktop.UpdateReady?"Update ready":"You're up to date";};
             reset.Start();
         };
-        var supportTitle=new Label{Text="Support",AutoSize=false,Size=new Size(360,24),ForeColor=Palette.Text,BackColor=Color.Transparent,Font=labelFont};
-        var supportHelp=new Label{Text="If something doesn't work, export the log and send it. It has no passwords, tokens or player names.",AutoSize=false,Size=new Size(420,40),ForeColor=Palette.Muted,BackColor=Color.Transparent,Font=bodyFont};
-        var exportButton=new SoftButton{Text="Export log",Size=new Size(150,38),FlatStyle=FlatStyle.Flat,BackColor=Palette.Raised,ForeColor=Palette.Text,Font=new Font("Segoe UI",9,FontStyle.Bold),Cursor=Cursors.Hand,TextAlign=ContentAlignment.MiddleCenter};
-        exportButton.FlatAppearance.BorderSize=0;
-        exportButton.Click+=delegate{
-            try{
-                // A fresh session check first, so the log always contains the current Riot Client state.
-                new RiotReader().GetStatisticsSession();
-                LunarLog.Export();
-                exportButton.Text="Saved to Desktop";
-            }catch(Exception error){LunarLog.Error("app","export failed",error);exportButton.Text="Try again";}
-            var reset=new Timer{Interval=4000};reset.Tick+=delegate{reset.Stop();reset.Dispose();if(!exportButton.IsDisposed)exportButton.Text="Export log";};reset.Start();
-        };
         panel.Cards=new[]{
             new SettingsCard{Glyph=SettingsGlyph.Language,Title=languageTitle,Body=new[]{languageDescription},Action=languageSelect},
             new SettingsCard{Glyph=SettingsGlyph.Keyboard,Title=hotkeyTitle,Body=new[]{hotkeyHelp},Action=changeHotkeyButton,Keys=()=>desktop==null?HotkeyPreference.Current.Display:desktop.HotkeyDisplay},
-            new SettingsCard{Glyph=SettingsGlyph.Update,Title=updatesTitle,Body=new[]{languageHelp},Action=checkButton,Badge=LunarUpdates.DisplayVersion},
-            new SettingsCard{Glyph=SettingsGlyph.Support,Title=supportTitle,Body=new[]{supportHelp},Action=exportButton}
+            new SettingsCard{Glyph=SettingsGlyph.Update,Title=updatesTitle,Body=new[]{languageHelp},Action=checkButton,Badge=LunarUpdates.DisplayVersion}
         };
         foreach(var card in panel.Cards){panel.Controls.Add(card.Title);foreach(var body in card.Body)panel.Controls.Add(body);panel.Controls.Add(card.Action);}
         panel.Controls.Add(hotkeyCurrent);
@@ -1204,6 +1190,7 @@ static class Program {
         }
         DesktopShortcut.Ensure();
         LunarLog.Start();
+        AppIcon.RefreshShellCacheIfChanged();
         // Single instance: opening Lunar again just brings the running window to the front (no second tray icon).
         bool first;
         var instance=new System.Threading.Mutex(true,@"Local\LunarSingleInstance",out first);
@@ -1223,6 +1210,38 @@ static class Program {
         GC.KeepAlive(instance);
         return 0;
     }
+}
+// The app icon, read from the icon embedded in Lunar itself. Icon.ExtractAssociatedIcon goes through the Windows
+// icon cache, which keeps showing the previous icon after an update (same .exe path).
+static class AppIcon {
+    public static Icon Load(){
+        try{
+            using(var stream=typeof(AppIcon).Assembly.GetManifestResourceStream("lunar.ico"))
+                if(stream!=null)return new Icon(stream);
+        }catch(Exception e){LunarLog.Error("app","embedded icon failed",e);}
+        return Icon.ExtractAssociatedIcon(typeof(AppIcon).Assembly.Location);
+    }
+    // When the icon changes (an update with a new logo), ask Windows to refresh its icon cache once so the
+    // taskbar pin, Start menu and desktop shortcut show the new icon too.
+    public static void RefreshShellCacheIfChanged(){
+        try{
+            string hash;
+            using(var stream=typeof(AppIcon).Assembly.GetManifestResourceStream("lunar.ico"))
+            using(var sha=System.Security.Cryptography.SHA256.Create()){
+                if(stream==null)return;
+                hash=BitConverter.ToString(sha.ComputeHash(stream)).Replace("-","").Substring(0,16);
+            }
+            string marker=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Lunar","icon.txt");
+            if(File.Exists(marker)&&File.ReadAllText(marker).Trim()==hash)return;
+            Directory.CreateDirectory(Path.GetDirectoryName(marker));
+            File.WriteAllText(marker,hash);
+            string tool=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),"ie4uinit.exe");
+            if(File.Exists(tool))Process.Start(new ProcessStartInfo(tool,"-show"){UseShellExecute=false,CreateNoWindow=true});
+            SHChangeNotify(0x08000000,0x0000,IntPtr.Zero,IntPtr.Zero); // SHCNE_ASSOCCHANGED: shell reloads icons
+            LunarLog.Write("app","icon changed → Windows icon cache refreshed");
+        }catch(Exception e){LunarLog.Error("app","icon cache refresh failed",e);}
+    }
+    [DllImport("shell32.dll")] static extern void SHChangeNotify(int eventId,int flags,IntPtr item1,IntPtr item2);
 }
 static class DesktopShortcut {
     public static void Ensure(){
@@ -1262,6 +1281,7 @@ static class Tests {
         Check(live.AllyScore==3&&live.EnemyScore==9,"live score read from flat presence format");
         Check(RiotReader.RegionFromClient("BR","")=="br"&&RiotReader.RegionFromClient("LA1","")=="latam"&&RiotReader.RegionFromClient("EUW","")=="eu"&&RiotReader.RegionFromClient("OC1","")=="ap"&&RiotReader.RegionFromClient("","na")=="na"&&RiotReader.RegionFromClient("XYZ","")=="","Riot Client region codes map to VALORANT regions");
         Check(RiotReader.IsRiotClientName("Riot Client")&&RiotReader.IsRiotClientName("RiotClientServices")&&!RiotReader.IsRiotClientName("VALORANT"),"new and old Riot Client process names are recognised");
+        using(var appIcon=AppIcon.Load())Check(appIcon!=null&&appIcon.Width>0,"app icon loads from the embedded resource");
         Check(!RiotReader.ClientProcessAlive(Int32.MaxValue),"a process that does not exist is not running");
         var guarded=Process.GetProcessesByName("csrss").FirstOrDefault();
         if(guarded!=null)Check(!RiotReader.ClientProcessAlive(guarded.Id),"a protected non-Riot process is checked by name without access errors");
