@@ -8,8 +8,10 @@ using System.Diagnostics;
 
 namespace Lunar {
 enum Outcome { Unknown, Win, Loss, Draw, Ignored }
+enum MvpKind {None,Match,Team}
 class MatchRow {
     public string AgentId="",SeasonId="";public Performance Metrics=new Performance();public List<ScorePlayer> Roster=new List<ScorePlayer>();public int? RRChange;
+    public MvpKind Mvp; // Match MVP = top combat score of the match; Team MVP = top score of the other team
     public string Id="",Map="Map unavailable",Queue="",Score="—",Kda="—";
     public string MapId="",Region="";
     public DateTime Started; public Outcome Result; public bool Completed;
@@ -36,6 +38,7 @@ static class HistoryLogic {
     public static MatchRow ParseMatch(object data,string subject){
         var info=Json.Get(data,"matchInfo");var row=new MatchRow {Id=Json.S(info,"matchId"),Map=MapName(Json.S(info,"mapId")),MapId=TrackArt.MapId(MapName(Json.S(info,"mapId"))),Queue=QueueName(Json.S(info,"queueID")),Started=LocalTime(N(info,"gameStartMillis")),Completed=Json.B(info,"isCompleted")};
         StatsMetrics.Enrich(data,row,subject);
+        row.Mvp=MvpFor(row.Roster,subject);
         var p=Json.A(Json.Get(data,"players")).FirstOrDefault(v=>String.Equals(Json.S(v,"subject"),subject,StringComparison.OrdinalIgnoreCase));
         if(p==null)return row;
         var stats=Json.Get(p,"stats");if(Json.Get(stats,"kills")!=null&&Json.Get(stats,"deaths")!=null&&Json.Get(stats,"assists")!=null)row.Kda=N(stats,"kills")+" / "+N(stats,"deaths")+" / "+N(stats,"assists");
@@ -50,6 +53,22 @@ static class HistoryLogic {
         else if(teams.Any(t=>Json.S(t,"teamId")!=teamId&&Json.B(t,"won")))row.Result=Outcome.Loss;
         else if(completion=="VoteDraw" || (completion=="Completed"&&N(team,"roundsWon",-1)>=0&&N(team,"roundsWon",-1)==N(enemy,"roundsWon",-2)))row.Result=Outcome.Draw;
         return row;
+    }
+    // VALORANT-style MVP from combat score: the top scorer of the match is Match MVP; the top scorer of the other
+    // team is Team MVP. Needs scores for at least two players; Team MVP only exists with exactly two teams.
+    public static MvpKind MvpFor(List<ScorePlayer> roster,string subject){
+        if(roster==null||String.IsNullOrEmpty(subject))return MvpKind.None;
+        var scored=roster.Where(r=>r!=null&&r.Stats!=null&&r.Stats.HasScore&&!String.IsNullOrEmpty(r.Id)).ToList();
+        var me=scored.FirstOrDefault(r=>String.Equals(r.Id,subject,StringComparison.OrdinalIgnoreCase));
+        if(me==null||scored.Count<2||me.Stats.Score<=0)return MvpKind.None;
+        long top=scored.Max(r=>r.Stats.Score);
+        var best=scored.Where(r=>r.Stats.Score==top).ToList();
+        if(best.Count==1&&best[0]==me)return MvpKind.Match;
+        var teams=scored.Select(r=>r.Team??"").Distinct().ToList();
+        if(teams.Count!=2||best.Any(r=>r.Team==me.Team))return MvpKind.None;
+        var mine=scored.Where(r=>r.Team==me.Team).ToList();
+        long teamTop=mine.Max(r=>r.Stats.Score);
+        return me.Stats.Score==teamTop&&mine.Count(r=>r.Stats.Score==teamTop)==1?MvpKind.Team:MvpKind.None;
     }
     public static void CountDay(PlayerProfile p,DateTime day){
         p.Day=day.Date;p.Wins=p.Losses=p.Draws=p.Unknown=0;
@@ -158,6 +177,13 @@ static class HistoryChecks {
         count=0;string id="11111111-1111-1111-1111-111111111111",match="22222222-2222-2222-2222-222222222222";DateTime now=DateTime.Today.AddHours(12);
         var row=HistoryLogic.ParseMatch(Match(match,id,true,true,"Completed",now),id);
         Check(row.Result==Outcome.Win&&row.Score=="13 : 9"&&row.Kda=="20 / 12 / 7","match result and KDA come from player's team");
+        Func<string,string,long,ScorePlayer> sp=(who,team,score)=>new ScorePlayer{Id=who,Team=team,Stats=new Performance{HasScore=true,Score=score}};
+        var mvpRoster=new List<ScorePlayer>{sp("a","Blue",5000),sp("b","Blue",3000),sp("c","Red",4200),sp("d","Red",2000)};
+        Check(HistoryLogic.MvpFor(mvpRoster,"a")==MvpKind.Match,"top combat score is Match MVP");
+        Check(HistoryLogic.MvpFor(mvpRoster,"c")==MvpKind.Team,"other team's top score is Team MVP");
+        Check(HistoryLogic.MvpFor(mvpRoster,"b")==MvpKind.None&&HistoryLogic.MvpFor(mvpRoster,"d")==MvpKind.None,"non-top players are not MVP");
+        Check(HistoryLogic.MvpFor(new List<ScorePlayer>{sp("a","Blue",4000),sp("b","Red",4000)},"a")==MvpKind.None,"tied top score gives no Match MVP");
+        Check(HistoryLogic.MvpFor(new List<ScorePlayer>{sp("a","Blue",4000)},"a")==MvpKind.None,"single scored player gives no MVP");
         Check(HistoryLogic.ParseMatch(Match(match,id,false,true,"Completed",now),id).Result==Outcome.Loss,"loss uses opposing team winner");
         Check(HistoryLogic.ParseMatch(Match(match,id,false,false,"",now),id).Result==Outcome.Ignored,"unfinished matches do not count as losses");
         Check(HistoryLogic.ParseMatch(Match(match,id,false,true,"Remake",now),id).Result==Outcome.Ignored,"remakes excluded");

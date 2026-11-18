@@ -301,12 +301,14 @@ static class RiotStatsClient {
     static async Task<PlayerProfile> LoadProfileCore(Player player,CancellationToken cancel,IProgress<PlayerProfile> rankReady,bool background){        var profile=new PlayerProfile{Id=player.Id,Name=player.Name,CardId=player.CardId,AccountLevel=player.AccountLevel,AccountLevelHidden=player.AccountLevelHidden};
         names[player.Id]=player.Name;
         var history=background?BackgroundHistory(player,cancel):LoadPage(player,0,10,"Competitive",cancel);
+        var rrTask=LoadRR(player,20,cancel);
         try{
             try{ApplyRank(profile,await Get("/mmr/v1/players/"+PlayerId(player),cancel).ConfigureAwait(false),CurrentAct());}
             catch(RiotStatsException error){AddError(profile,error,"Rank");}
             if(rankReady!=null)rankReady.Report(new PlayerProfile{Id=profile.Id,Name=profile.Name,CardId=profile.CardId,Tier=profile.Tier,PeakTier=profile.PeakTier,RR=profile.RR,RankLabel=profile.RankLabel,RankIsCurrent=profile.RankIsCurrent,AccountLevel=profile.AccountLevel,AccountLevelHidden=profile.AccountLevelHidden,HistoryLoading=true,Message="Loading recent matches…"});
             try{
                 var page=await history.ConfigureAwait(false);
+                try{await rrTask.ConfigureAwait(false);}catch(OperationCanceledException){throw;}catch(Exception){}
                 profile.Message+=(page.CompetitiveOnly?"Only competitive history is available for this player. ":"");
                 foreach(var item in page.Items.OrderByDescending(m=>HistoryLogic.N(Json.Get(m,"matchInfo"),"gameStartMillis"))){
                     AccountLevels.Apply(profile,item,player.Id);
@@ -331,6 +333,28 @@ static class RiotStatsClient {
         profile.Message+=section+": "+(error.Status==404?"Riot did not return data for this player.":error.Message)+" ";
         if(error.Status==429){profile.Limited=true;profile.RetryAfter=error.RetryAfter;}
     }
+    // RR gained/lost per competitive match, from Riot's competitive updates (match history itself has no RR).
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<string,int> rrByMatch=new System.Collections.Concurrent.ConcurrentDictionary<string,int>(StringComparer.OrdinalIgnoreCase);
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<string,int> rrFetched=new System.Collections.Concurrent.ConcurrentDictionary<string,int>(StringComparer.OrdinalIgnoreCase);
+    static void RememberRR(IEnumerable<object> updates){
+        foreach(var u in updates){string match=Json.S(u,"MatchID");if(match!=""&&Json.Get(u,"RankedRatingEarned")!=null)rrByMatch[match]=(int)HistoryLogic.N(u,"RankedRatingEarned");}
+    }
+    // Fetches competitive updates in pages of 20 until at least `upTo` are known (max 200). Failures are ignored:
+    // RR is a nice-to-have and must never break profile loading.
+    static async Task LoadRR(Player player,int upTo,CancellationToken cancel){
+        try{
+            string id=PlayerId(player);
+            int have;rrFetched.TryGetValue(id,out have);
+            while(have<upTo&&have<200){
+                var updates=await Get("/mmr/v1/players/"+id+"/competitiveupdates?startIndex="+have+"&endIndex="+(have+20)+"&queue=competitive",cancel).ConfigureAwait(false);
+                var rows=Json.A(Json.Get(updates,"Matches")).ToList();
+                RememberRR(rows);
+                have+=20;rrFetched[id]=rows.Count<20?int.MaxValue/2:have;
+                if(rows.Count<20)return;
+            }
+        }catch(OperationCanceledException){throw;}catch(Exception){}
+    }
+    internal static void ApplyRR(MatchRow row){int rr;if(row!=null&&!row.RRChange.HasValue&&row.Queue=="Competitive"&&rrByMatch.TryGetValue(row.Id,out rr))row.RRChange=rr;}
     internal sealed class HistoryPage {internal object[] Items;internal bool CompetitiveOnly,EndReached;}
     static async Task<HistoryPage> LoadPage(Player player,int start,int size,string mode,CancellationToken cancel){
         string queue=mode=="Team Deathmatch"?"hurm":Catalog.Modes.Contains(mode)?mode.ToLowerInvariant().Replace(" ",""):"";
@@ -343,6 +367,7 @@ static class RiotStatsClient {
             if(queue!=""&&queue!="competitive")throw new RiotStatsException(404,"Riot history is unavailable for this mode.");
             history=await Get("/mmr/v1/players/"+PlayerId(player)+"/competitiveupdates"+range+"&queue=competitive",cancel).ConfigureAwait(false);
             rows=Json.Get(history,"Matches") as object[];
+            if(rows!=null)RememberRR(rows);
         }else rows=Json.Get(history,"History") as object[];
         if(rows==null)throw new InvalidOperationException("Riot match history response was not recognized.");
         return new HistoryPage{CompetitiveOnly=fallback,EndReached=AtHistoryEnd(start,size,rows.Length,HistoryLogic.N(history,"Total",-1)),Items=await FetchDetails(rows,Match,cancel).ConfigureAwait(false)};
@@ -369,13 +394,15 @@ static class RiotStatsClient {
     }
     internal static async Task<HistoryPage> LoadArchivePage(Player player,int page,string mode,CancellationToken cancel){
         ArchivePath(player,page,mode);
-        return await LoadPage(player,(page-1)*ArchivePageSize,ArchivePageSize,mode,cancel).ConfigureAwait(false);
+        var result=await LoadPage(player,(page-1)*ArchivePageSize,ArchivePageSize,mode,cancel).ConfigureAwait(false);
+        await LoadRR(player,page*ArchivePageSize,cancel).ConfigureAwait(false);
+        return result;
     }
     internal static MatchRow ParseArchivedMatch(object entry,string subject){
         if(Json.B(entry,"unavailable"))return new MatchRow{Id=Json.S(entry,"MatchID"),Started=HistoryLogic.LocalTime(HistoryLogic.N(entry,"GameStartTime")),Queue=HistoryLogic.QueueName(Json.S(entry,"QueueID")),Map="Details unavailable"};
         if(Json.S(Json.Get(entry,"matchInfo"),"matchId")==""||!Json.A(Json.Get(entry,"players")).Any(p=>String.Equals(Json.S(p,"subject"),subject,StringComparison.OrdinalIgnoreCase)))return null;
         var row=HistoryLogic.ParseMatch(entry,subject);
-        ApplyNames(row,names);return row;
+        ApplyNames(row,names);ApplyRR(row);return row;
     }
     internal static async Task<MatchRow> LoadScoreboard(MatchRow match,Player player,CancellationToken cancel){
         Guid id;if(match==null||!Guid.TryParse(match.Id,out id))return null;

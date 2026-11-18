@@ -83,6 +83,8 @@
 "recent sample only": ["somente partidas recentes","solo partidas recientes","matchs récents uniquement","nur letzte Matches","yalnızca son maçlar","только последние матчи"],
 "{0} matches in the current filter": ["{0} partidas no filtro atual","{0} partidas en el filtro actual","{0} matchs dans le filtre actuel","{0} Matches im aktuellen Filter","Geçerli filtrede {0} maç","Матчей в фильтре: {0}"],
 "Back to matches": ["Voltar","Volver","Retour","Zurück","Geri","Назад"],
+"MATCH MVP": ["MVP DA PARTIDA","MVP DE LA PARTIDA","MVP DU MATCH","MATCH-MVP","MAÇ MVP'Sİ","MVP МАТЧА"],
+"TEAM MVP": ["MVP DO TIME","MVP DEL EQUIPO","MVP D'ÉQUIPE","TEAM-MVP","TAKIM MVP'Sİ","MVP КОМАНДЫ"],
 "WIN": ["VITÓRIA","VICTORIA","VICTOIRE","SIEG","GALİBİYET","ПОБЕДА"],
 "LOSS": ["DERROTA","DERROTA","DÉFAITE","NIEDERLAGE","MAĞLUBİYET","ПОРАЖЕНИЕ"],
 "DRAW": ["EMPATE","EMPATE","ÉGALITÉ","UNENTSCHIEDEN","BERABERLİK","НИЧЬЯ"],

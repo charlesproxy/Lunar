@@ -100,16 +100,20 @@ static class LunarUpdates {
     static readonly Regex TagPattern=new Regex(@"/releases/tag/(v\d+\.\d+(?:\.\d+)?)/?\z",RegexOptions.Compiled);
     static string latestTag,latestEtag,latestSource="";
     static DateTime apiBlockedUntil=DateTime.MinValue;
+    static string lastRedirectError="";
+    static DateTime redirectBlockedUntil=DateTime.MinValue;
     // Newest release tag. Primary: the github.com/releases/latest redirect, read without following it (only the
     // Location header). It is not the REST API, so it has no 60-requests-per-hour limit. Fallback: the REST API with
     // ETag, which backs off until GitHub's reset time if the limit is ever reached.
     static async Task<string> LatestTag(CancellationToken cancellation){
-        try{
-            string tag=await RedirectTag(cancellation).ConfigureAwait(false);
-            latestTag=tag;latestSource="github.com";
-            return tag;
-        }catch(OperationCanceledException){throw;}
-        catch(Exception){}
+        if(DateTime.UtcNow>=redirectBlockedUntil){
+            try{
+                string tag=await RedirectTag(cancellation).ConfigureAwait(false);
+                latestTag=tag;latestSource="github.com";lastRedirectError="";
+                return tag;
+            }catch(OperationCanceledException){throw;}
+            catch(Exception error){lastRedirectError=error.GetType().Name+": "+error.Message;}
+        }
         if(DateTime.UtcNow<apiBlockedUntil)throw new InvalidOperationException("GitHub API rate limit; waiting until "+apiBlockedUntil.ToLocalTime().ToString("HH:mm"));
         string api=await ApiTag(cancellation).ConfigureAwait(false);
         latestSource="api.github.com";
@@ -118,7 +122,7 @@ static class LunarUpdates {
     static async Task<string> RedirectTag(CancellationToken cancellation){
         var request=(HttpWebRequest)WebRequest.Create(LatestPage+"?t="+DateTime.UtcNow.Ticks);
         request.UserAgent="Lunar Update";
-        request.Method="HEAD";
+        request.Method="GET"; // HEAD is throttled much sooner by github.com than GET
         request.AllowAutoRedirect=false;
         using(var timeout=CancellationTokenSource.CreateLinkedTokenSource(cancellation)){
             timeout.CancelAfter(TimeSpan.FromSeconds(20));
@@ -127,9 +131,16 @@ static class LunarUpdates {
                 try{response=(HttpWebResponse)await request.GetResponseAsync().ConfigureAwait(false);}
                 catch(WebException error){response=error.Response as HttpWebResponse;if(response==null)throw;}
                 using(response){
+                    if((int)response.StatusCode==429||(int)response.StatusCode==403){
+                        // Burst limit on github.com: wait as long as GitHub asks (default 2 minutes).
+                        int seconds;
+                        if(!Int32.TryParse(response.Headers["Retry-After"],out seconds)||seconds<=0)seconds=120;
+                        redirectBlockedUntil=DateTime.UtcNow.AddSeconds(Math.Min(seconds,3600));
+                        throw new InvalidOperationException("github.com asked to wait "+seconds+" s");
+                    }
                     string location=response.Headers[HttpResponseHeader.Location]??"";
                     var match=TagPattern.Match(location);
-                    if((int)response.StatusCode/100!=3||!match.Success)throw new InvalidDataException("Unexpected latest-release redirect.");
+                    if((int)response.StatusCode/100!=3||!match.Success)throw new InvalidDataException("Unexpected latest-release redirect (HTTP "+(int)response.StatusCode+").");
                     return match.Groups[1].Value;
                 }
             }
@@ -182,6 +193,7 @@ static class LunarUpdates {
             clock.Restart();
             string second=LatestTag(CancellationToken.None).GetAwaiter().GetResult();
             Console.WriteLine("again="+second+" via "+latestSource+" in "+clock.ElapsedMilliseconds+" ms");
+            if(lastRedirectError!="")Console.WriteLine("redirect error: "+lastRedirectError);
             Console.WriteLine("current="+DisplayVersion+" newer="+(Normalize(new Version(second.Substring(1)))>Normalize(CurrentVersion)));
             var staged=Prepare(CancellationToken.None).GetAwaiter().GetResult();
             Console.WriteLine("prepare="+(staged??"nothing newer"));
