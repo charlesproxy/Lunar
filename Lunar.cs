@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 [assembly: System.Reflection.AssemblyTitle("Lunar")]
 [assembly: System.Reflection.AssemblyProduct("Lunar")]
-[assembly: System.Reflection.AssemblyFileVersion("1.95.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.96.0.0")]
 
 namespace Lunar {
 static class Json {
@@ -145,7 +145,7 @@ partial class RiotReader {
     }
     bool tracing; // log every step (only for profile/tracker session checks, not the 3-second live poll)
     void Trace(string message){if(tracing)LunarLog.Write("session",message);}
-    static string ProcessNameOf(int pid){try{using(var p=Process.GetProcessById(pid))return p.HasExited?"(exited)":p.ProcessName;}catch(Exception){return "(not running)";}}
+    static string ProcessNameOf(int pid){try{using(var p=Process.GetProcessById(pid)){try{return p.ProcessName;}catch(Exception e){return "(running, access denied: "+e.GetType().Name+")";}}}catch(ArgumentException){return "(not running)";}catch(Exception e){return "(unknown: "+e.GetType().Name+")";}}
     Snapshot InitializeSession(bool requireGame=true,bool fetchCurrentVersion=false) {
         if(requireGame&&!HasProcess("VALORANT-Win64-Shipping")) { names.Clear(); nameMatch=""; return new Snapshot(); }
         string lockPath=Path.Combine(local,@"Riot Games\Riot Client\Config\lockfile");
@@ -156,7 +156,12 @@ partial class RiotReader {
         int clientPid;
         bool pidOk=Int32.TryParse(lf[1],out clientPid);
         Trace("lockfile process: "+(pidOk?ProcessNameOf(clientPid):"(no pid)")+" · running Riot processes: "+String.Join(", ",Process.GetProcesses().Select(p=>{try{return p.ProcessName;}catch(Exception){return "";}}).Where(n=>n.IndexOf("riot",StringComparison.OrdinalIgnoreCase)>=0||n.IndexOf("valorant",StringComparison.OrdinalIgnoreCase)>=0).Distinct()));
-        if(fetchCurrentVersion&&(!pidOk||!ClientProcessAlive(clientPid))){Trace("Riot Client process not accepted → 'Waiting for Riot Client'");return new Snapshot {Status="Waiting for Riot Client"};}
+        if(fetchCurrentVersion&&(!pidOk||!ClientProcessAlive(clientPid))){
+            // The lockfile PID can't be confirmed, but if Riot Client services are running the port may still be valid:
+            // try it — the entitlement request below tells whether the session really works.
+            if(HasProcess("RiotClientServices")||HasProcess("Riot Client"))Trace("lockfile PID not confirmed, but Riot Client is running → trying its port");
+            else{Trace("Riot Client process not running → 'Waiting for Riot Client'");return new Snapshot {Status="Waiting for Riot Client"};}
+        }
         basic=Convert.ToBase64String(Encoding.UTF8.GetBytes("riot:"+lf[3])); origin="https://127.0.0.1:"+port;
         if(fetchCurrentVersion&&!ReadSessionAuthorization()){Trace("entitlements: no access/entitlement token (not signed in?)");return new Snapshot {Status="Waiting for Riot Client sign-in"};}
         Trace("entitlements: signed in");
@@ -1249,6 +1254,9 @@ static class Tests {
         Check(live.AllyScore==3&&live.EnemyScore==9,"live score read from flat presence format");
         Check(RiotReader.RegionFromClient("BR","")=="br"&&RiotReader.RegionFromClient("LA1","")=="latam"&&RiotReader.RegionFromClient("EUW","")=="eu"&&RiotReader.RegionFromClient("OC1","")=="ap"&&RiotReader.RegionFromClient("","na")=="na"&&RiotReader.RegionFromClient("XYZ","")=="","Riot Client region codes map to VALORANT regions");
         Check(RiotReader.IsRiotClientName("Riot Client")&&RiotReader.IsRiotClientName("RiotClientServices")&&!RiotReader.IsRiotClientName("VALORANT"),"new and old Riot Client process names are recognised");
+        Check(!RiotReader.ClientProcessAlive(Int32.MaxValue),"a process that does not exist is not running");
+        var guarded=Process.GetProcessesByName("csrss").FirstOrDefault();
+        if(guarded!=null)Check(!RiotReader.ClientProcessAlive(guarded.Id),"a protected non-Riot process is checked by name without access errors");
         var s=RiotReader.Parse(parse("{\"AllyTeam\":{\"TeamID\":\"Blue\",\"Players\":[{\"Subject\":\""+me+"\"}]},\"EnemyTeam\":null}"),me,true);
         Check(s.Allies.Count==1&&s.Enemies.Count==0,"enemy null does not fabricate identities");
         Check(s.Side.Contains("estimated"),"starting side labelled as inference");
