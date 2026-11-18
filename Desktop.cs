@@ -796,7 +796,7 @@ sealed class DiscordToggle:CheckBox {
     internal static string StatusText(string status,bool enabled,bool online,bool saveFailed){
         if(saveFailed)return "Couldn’t save changes";
         if(!enabled)return "Presence off";
-        if(status==DiscordPresence.IdleStatus)return "Shows during matches";
+        if(status==DiscordPresence.IdleStatus)return "Shows in agent select and matches";
         if(online)return "Presence active";
         if(status=="Waiting for Discord desktop")return "Open Discord desktop";
         if(status=="Connecting to Discord…")return "Connecting…";
@@ -1270,11 +1270,11 @@ namespace Lunar {
 sealed class DiscordActivity {
     readonly string details,state,map,agent,mapArt,agentArt;
     public readonly long Started;
-    // Only shown on the Discord profile while actually in a match; otherwise the activity is cleared.
-    public readonly bool Visible;
+    // Shown on the Discord profile in agent select and in a match; otherwise the activity is cleared.
+    public readonly bool Visible,InMatch;
     public string Key{get{return Visible?String.Join("|",details,state,map,agent,mapArt,agentArt,Started.ToString()):"hidden";}}
-    DiscordActivity(string details,string state,string map,string agent,string mapArt,string agentArt,long started,bool visible){
-        Visible=visible;
+    DiscordActivity(string details,string state,string map,string agent,string mapArt,string agentArt,long started,bool visible,bool inMatch){
+        Visible=visible;InMatch=inMatch;
         this.details=details;this.state=state;this.map=map;this.agent=agent;
         this.mapArt=mapArt;this.agentArt=agentArt;Started=started;
     }
@@ -1295,7 +1295,7 @@ sealed class DiscordActivity {
             details=String.IsNullOrEmpty(map)?"Live score  ·  "+score:map+"  ·  "+score;
             state=state==""?"In Match":state+"  ·  In Match";
         }
-        return new DiscordActivity(details,state,map,agent,mapImage,agentImage,started,live);
+        return new DiscordActivity(details,state,map,agent,mapImage,agentImage,started,live||select,live);
     }
     static string Art(string directory,string id,string file){
         Guid value;
@@ -1362,8 +1362,9 @@ sealed class DiscordPresence:IDisposable {
                 start=DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             }
             var next=DiscordActivity.From(snapshot,start);
-            // The timer starts when the match itself starts (agent select shares the match ID).
-            if(next.Visible&&!state.Visible)next=DiscordActivity.From(snapshot,DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            // The timer restarts when the activity appears (agent select) and again when the match itself starts
+            // (agent select and the match share the same match ID).
+            if(next.Visible&&(!state.Visible||next.InMatch!=state.InMatch))next=DiscordActivity.From(snapshot,DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             if(state.Key==next.Key)return;
             state=next;
         }

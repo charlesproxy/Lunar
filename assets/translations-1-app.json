@@ -36,6 +36,7 @@
 "Discord Presence": ["Status no Discord","Estado en Discord","Statut Discord","Discord-Status","Discord Durumu","Статус в Discord"],
 "Click to turn off Discord Presence.": ["Clique para desativar o status no Discord.","Haz clic para desactivar el estado en Discord.","Cliquez pour désactiver le statut Discord.","Klicke, um den Discord-Status auszuschalten.","Discord Durumunu kapatmak için tıkla.","Нажмите, чтобы отключить статус в Discord."],
 "Click to turn on Discord Presence.": ["Clique para ativar o status no Discord.","Haz clic para activar el estado en Discord.","Cliquez pour activer le statut Discord.","Klicke, um den Discord-Status einzuschalten.","Discord Durumunu açmak için tıkla.","Нажмите, чтобы включить статус в Discord."],
+"Shows in agent select and matches": ["Aparece na seleção de agentes e nas partidas","Aparece en la selección de agente y en las partidas","Visible en sélection d'agent et en match","Sichtbar in Agentenauswahl und Matches","Ajan seçiminde ve maçlarda görünür","Видно при выборе агента и в матчах"],
 "Shows during matches": ["Aparece durante as partidas","Aparece durante las partidas","Visible pendant les matchs","Sichtbar während Matches","Maçlar sırasında görünür","Видно во время матчей"],
 "Shown during matches": ["Aparece durante as partidas","Aparece durante las partidas","Visible pendant les matchs","Sichtbar während Matches","Maçlar sırasında görünür","Видно во время матчей"],
 "Presence active": ["Status ativo","Estado activo","Statut actif","Status aktiv","Durum etkin","Статус активен"],

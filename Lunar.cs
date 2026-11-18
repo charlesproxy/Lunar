@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 [assembly: System.Reflection.AssemblyTitle("Lunar")]
 [assembly: System.Reflection.AssemblyProduct("Lunar")]
-[assembly: System.Reflection.AssemblyFileVersion("2.2.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("2.3.0.0")]
 
 namespace Lunar {
 static class Json {
@@ -1282,7 +1282,10 @@ static class Tests {
         Check(RiotReader.RegionFromClient("BR","")=="br"&&RiotReader.RegionFromClient("LA1","")=="latam"&&RiotReader.RegionFromClient("EUW","")=="eu"&&RiotReader.RegionFromClient("OC1","")=="ap"&&RiotReader.RegionFromClient("","na")=="na"&&RiotReader.RegionFromClient("XYZ","")=="","Riot Client region codes map to VALORANT regions");
         Check(RiotReader.IsRiotClientName("Riot Client")&&RiotReader.IsRiotClientName("RiotClientServices")&&!RiotReader.IsRiotClientName("VALORANT"),"new and old Riot Client process names are recognised");
         Check(DiscordActivity.From(new Snapshot{Status="IN MATCH",Map="Ascent"},0).Visible,"Discord activity shown while in a match");
-        Check(!DiscordActivity.From(new Snapshot{Status="AGENT SELECT",Map="Ascent"},0).Visible&&!DiscordActivity.From(new Snapshot(),0).Visible,"Discord activity hidden in agent select, lobby and when VALORANT is closed");
+        Check(DiscordActivity.From(new Snapshot{Status="AGENT SELECT",Map="Ascent"},0).Visible&&!DiscordActivity.From(new Snapshot{Status="AGENT SELECT",Map="Ascent"},0).InMatch,"Discord activity shown in agent select");
+        Check(DiscordActivity.From(new Snapshot{Status="IN MATCH",Map="Ascent"},0).InMatch,"in-match activity is marked as a match");
+        Check(DiscordActivity.From(new Snapshot{Status="IN MATCH",Map="Ascent",Self=new Player{AgentId="add6443a-41bd-e414-f6ad-e58d267f4e95"}},0).InMatch,"a match without a score is still marked as a match");
+        Check(!DiscordActivity.From(new Snapshot(),0).Visible,"Discord activity hidden in the lobby and when VALORANT is closed");
         using(var appIcon=AppIcon.Load())Check(appIcon!=null&&appIcon.Width>0,"app icon loads from the embedded resource");
         Check(!RiotReader.ClientProcessAlive(Int32.MaxValue),"a process that does not exist is not running");
         var guarded=Process.GetProcessesByName("csrss").FirstOrDefault();
