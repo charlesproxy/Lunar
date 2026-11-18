@@ -176,13 +176,28 @@ partial class RiotReader {
     }
     internal static object RiotPresenceData(object entry){
         var value=Json.Get(entry,"private");
-        if(value is System.Collections.Generic.Dictionary<string,object>)return value;
+        if(value is System.Collections.Generic.Dictionary<string,object>)return FlattenPresence(value);
         var encoded=value as string;
         if(String.IsNullOrEmpty(encoded)||encoded.Length>32768)return null;
         try{
             string json=encoded.StartsWith("{",StringComparison.Ordinal)?encoded:Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
-            return Json.Codec.DeserializeObject(json);
+            return FlattenPresence(Json.Codec.DeserializeObject(json));
         }catch(FormatException){return null;}catch(ArgumentException){return null;}catch(InvalidOperationException){return null;}
+    }
+    // Since 2024 VALORANT nests presence fields (matchPresenceData.sessionLoopState, partyPresenceData.
+    // partyOwnerMatchScoreAllyTeam, playerPresenceData…). Lift them to the top level so readers work with both the
+    // old flat format and the new one. Existing top-level keys win.
+    static readonly string[] PresenceSections={"matchPresenceData","partyPresenceData","playerPresenceData","premierPresenceData"};
+    internal static object FlattenPresence(object presence){
+        var root=presence as System.Collections.Generic.Dictionary<string,object>;
+        if(root==null)return presence;
+        var flat=new System.Collections.Generic.Dictionary<string,object>(root,StringComparer.Ordinal);
+        foreach(var section in PresenceSections){
+            var nested=Json.Get(root,section) as System.Collections.Generic.Dictionary<string,object>;
+            if(nested==null)continue;
+            foreach(var pair in nested)if(!flat.ContainsKey(pair.Key))flat[pair.Key]=pair.Value;
+        }
+        return flat;
     }
     internal static void ApplyPartyPresence(Snapshot snapshot,object payload){
         if(String.IsNullOrEmpty(snapshot.Match))return;

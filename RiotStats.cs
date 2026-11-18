@@ -102,17 +102,25 @@ static class RiotStatsClient {
         return result;
     }
     internal static void ApplyRank(PlayerProfile profile,object mmr,string act){
-        HistoryLogic.Rank(profile,mmr,act);profile.PeakTier=-1;
+        HistoryLogic.Rank(profile,mmr,act);profile.PeakTier=-1;profile.PeakRR=-1;
         var seasons=Json.Get(Json.Get(Json.Get(mmr,"QueueSkills"),"competitive"),"SeasonalInfoBySeasonID") as Dictionary<string,object>;
         if(seasons==null)return;
         foreach(var entry in seasons){
-            int tier=(int)HistoryLogic.N(entry.Value,"CompetitiveTier",0);
+            int tier=(int)HistoryLogic.N(entry.Value,"CompetitiveTier",0),final=tier;
+            long finalRR=HistoryLogic.N(entry.Value,"RankedRating",-1);
             var wins=Json.Get(entry.Value,"WinsByTier") as Dictionary<string,object>;
             if(wins!=null)foreach(var win in wins){int t;long count;if(Int32.TryParse(win.Key,out t)&&Int64.TryParse(Convert.ToString(win.Value),out count)&&count>0)tier=Math.Max(tier,t);}
             if(tier<3)continue;
-            if(oldActs.Contains(entry.Key)&&tier>=21)tier+=3;
-            profile.PeakTier=Math.Max(profile.PeakTier,tier);
+            bool old=oldActs.Contains(entry.Key);
+            if(old&&tier>=21)tier+=3;
+            if(old&&final>=21)final+=3;
+            // RR is only known when the act ENDED at the peak tier (WinsByTier gives the tier, not the RR).
+            int rr=final==tier&&finalRR>=0?(int)finalRR:-1;
+            if(tier>profile.PeakTier){profile.PeakTier=tier;profile.PeakRR=rr;}
+            else if(tier==profile.PeakTier&&rr>profile.PeakRR)profile.PeakRR=rr;
         }
+        // The current act counts too: being at the peak tier right now with more RR raises the peak RR.
+        if(profile.RankIsCurrent&&profile.Tier==profile.PeakTier&&profile.RR>profile.PeakRR)profile.PeakRR=profile.RR;
     }
     static readonly SemaphoreSlim[] matchLocks=Enumerable.Range(0,64).Select(i=>new SemaphoreSlim(1,1)).ToArray();
     static async Task<object> Match(string id,CancellationToken cancel){
@@ -305,7 +313,7 @@ static class RiotStatsClient {
         try{
             try{ApplyRank(profile,await Get("/mmr/v1/players/"+PlayerId(player),cancel).ConfigureAwait(false),CurrentAct());}
             catch(RiotStatsException error){AddError(profile,error,"Rank");}
-            if(rankReady!=null)rankReady.Report(new PlayerProfile{Id=profile.Id,Name=profile.Name,CardId=profile.CardId,Tier=profile.Tier,PeakTier=profile.PeakTier,RR=profile.RR,RankLabel=profile.RankLabel,RankIsCurrent=profile.RankIsCurrent,AccountLevel=profile.AccountLevel,AccountLevelHidden=profile.AccountLevelHidden,HistoryLoading=true,Message="Loading recent matches…"});
+            if(rankReady!=null)rankReady.Report(new PlayerProfile{Id=profile.Id,Name=profile.Name,CardId=profile.CardId,Tier=profile.Tier,PeakTier=profile.PeakTier,PeakRR=profile.PeakRR,RR=profile.RR,RankLabel=profile.RankLabel,RankIsCurrent=profile.RankIsCurrent,AccountLevel=profile.AccountLevel,AccountLevelHidden=profile.AccountLevelHidden,HistoryLoading=true,Message="Loading recent matches…"});
             try{
                 var page=await history.ConfigureAwait(false);
                 try{await rrTask.ConfigureAwait(false);}catch(OperationCanceledException){throw;}catch(Exception){}
@@ -467,6 +475,13 @@ static class RiotStatsChecks {
         var mmr=Data(new {QueueSkills=new {competitive=new {SeasonalInfoBySeasonID=new Dictionary<string,object>{{"3f61c772-4560-cd3f-5d3f-a7ab5abda6b3",new {CompetitiveTier=24}},{"current",new {CompetitiveTier=18,RankedRating=42}}}}}});
         var profile=new PlayerProfile();RiotStatsClient.ApplyRank(profile,mmr,"current");
         Check(profile.PeakTier==27&&profile.Tier==18&&profile.RR==42&&profile.RankIsCurrent,"pre-Ascendant peak normalizes independently of current rank");
+        Check(profile.PeakRR==-1,"peak RR unknown when the old act only reports the tier");
+        mmr=Data(new {QueueSkills=new {competitive=new {SeasonalInfoBySeasonID=new Dictionary<string,object>{{"a",new {CompetitiveTier=27,RankedRating=450}},{"b",new {CompetitiveTier=27,RankedRating=380}},{"current",new {CompetitiveTier=27,RankedRating=309}}}}}});
+        profile=new PlayerProfile();RiotStatsClient.ApplyRank(profile,mmr,"current");
+        Check(profile.PeakTier==27&&profile.PeakRR==450&&profile.RR==309,"peak RR is the best end-of-act RR at the peak tier");
+        mmr=Data(new {QueueSkills=new {competitive=new {SeasonalInfoBySeasonID=new Dictionary<string,object>{{"a",new {CompetitiveTier=26,RankedRating=90,WinsByTier=new Dictionary<string,object>{{"27","3"}}}}}}}});
+        profile=new PlayerProfile();RiotStatsClient.ApplyRank(profile,mmr,"current");
+        Check(profile.PeakTier==27&&profile.PeakRR==-1,"tier reached only by wins has no fabricated RR");
         var match=Data(new {matchInfo=new {matchId="match",mapId="/Game/Maps/Ascent/Ascent",queueID="competitive",gameStartMillis=1700000000000L,isCompleted=true,completionState="Completed"},players=new object[]{new {subject=player.Id,teamId="Blue",stats=new {kills=1,deaths=0,assists=0,roundsPlayed=1,score=300}},new {subject="enemy",teamId="Red"}},teams=new[]{new {teamId="Blue",roundsWon=1,won=true},new {teamId="Red",roundsWon=0,won=false}},roundResults=new[]{new {playerStats=new[]{new {subject=player.Id,damage=new[]{new {receiver="enemy",damage=150,headshots=1,bodyshots=0,legshots=0}}}}}}});
         var row=RiotStatsClient.ParseArchivedMatch(match,player.Id);
         var summary=new Summary(new[]{row});

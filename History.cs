@@ -17,7 +17,7 @@ class MatchRow {
     public DateTime Started; public Outcome Result; public bool Completed;
 }
 class PlayerProfile {
-    public int PeakTier=-1;
+    public int PeakTier=-1,PeakRR=-1; // PeakRR: end-of-act RR of the best act (-1 when Riot only reports the tier)
     public int AccountLevel;public bool AccountLevelHidden,AccountLevelFromMatch;
     public byte[] CardArt;
     public string CardId;

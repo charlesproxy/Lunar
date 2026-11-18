@@ -854,10 +854,18 @@ class ProfileCanvas:Control {
         DashboardCard(g,rank);
         Section(g,"Competitive rank",rank);
         RankArt.Draw(g,Profile.Tier,new Rectangle(x+14,y+55,55,55));
-        T(g,Profile.RankLabel,15,Palette.Text,new Rectangle(x+76,y+52,w-88,33),true);
-        T(g,Profile.RR<0?"":Profile.RR+" RR",10,Purple,new Rectangle(x+76,y+82,w-88,24),true);
+        // "Radiant · last known rank": big rank name, the qualifier goes small next to the RR so nothing is cut.
+        string label=Profile.RankLabel??"",note="";
+        int split=label.IndexOf(" · ",StringComparison.Ordinal);
+        if(split>0){note=label.Substring(split+3);label=label.Substring(0,split);}
+        T(g,label,15,Palette.Text,new Rectangle(x+76,y+52,w-88,33),true);
+        string rr=Profile.RR<0?"":Profile.RR+" RR";
+        int rrWidth=0;
+        if(rr!=""){T(g,rr,10,Purple,new Rectangle(x+76,y+82,w-88,24),true);using(var f=new Font("Segoe UI",10,FontStyle.Bold))rrWidth=LunarText.MeasureText(g,rr,f).Width;}
+        if(note!="")T(g,(rr==""?"":"· ")+LunarLanguage.Translate(note),8,Palette.Muted,new Rectangle(x+76+rrWidth,y+83,Math.Max(0,w-88-rrWidth),24));
         RankArt.Draw(g,Profile.PeakTier,new Rectangle(x+16,y+122,24,24));
-        T(g,"Peak · "+(Profile.PeakTier<0?"—":RankArt.Name(Profile.PeakTier)),9,Palette.Muted,new Rectangle(x+48,y+119,w-60,29),true);
+        string peak=Profile.PeakTier<0?"—":RankArt.Name(Profile.PeakTier)+(Profile.PeakRR>=0?" · "+Profile.PeakRR+" RR":"");
+        T(g,"Peak · "+peak,9,Palette.Muted,new Rectangle(x+48,y+119,w-60,29),true);
     }
     void DrawProfileSidebar(Graphics g,Rectangle column) {
         int x=column.X,y=column.Y,w=column.Width;
