@@ -26,7 +26,7 @@ class PlayerProfile {
     public DateTime RetryAfter=DateTime.UtcNow.AddMinutes(2);
     public List<MatchRow> Matches=new List<MatchRow>();
     public string Record {get {return !HistoryAvailable?"—":Wins+"-"+Losses+(DayComplete?"":"*");}}
-    public Color RecordColor {get {return !HistoryAvailable?Palette.Muted:Wins>Losses?Palette.Green:Wins<Losses?Palette.Red:Palette.Muted;}}
+    public Color RecordColor {get {return !HistoryAvailable?Palette.Muted:Wins>Losses?Palette.Win:Wins<Losses?Palette.Loss:Palette.Muted;}}
 }
 static class HistoryLogic {
     public static long N(object o,string key,long fallback=0){long n;return Int64.TryParse(Json.S(o,key),out n)?n:fallback;}
@@ -168,9 +168,9 @@ static class HistoryChecks {
         for(int i=0;i<5;i++)profile.Matches.Add(new MatchRow {Id="match"+i,Started=now,Result=i==4?Outcome.Loss:Outcome.Win});
         profile.Matches.Add(new MatchRow{Id="yesterday",Started=DateTime.Today.AddTicks(-1),Result=Outcome.Loss});
         profile.Matches.Add(profile.Matches[0]);HistoryLogic.CountDay(profile,DateTime.Today);
-        Check(profile.Record=="4-1"&&profile.RecordColor==Palette.Green,"daily wins green; previous day and duplicates excluded");
+        Check(profile.Record=="4-1"&&profile.RecordColor==Palette.Win,"daily wins green; previous day and duplicates excluded");
         profile.Matches=Enumerable.Range(0,5).Select(i=>new MatchRow{Id="l"+i,Started=now,Result=i==0?Outcome.Win:Outcome.Loss}).ToList();HistoryLogic.CountDay(profile,DateTime.Today);
-        Check(profile.Record=="1-4"&&profile.RecordColor==Palette.Red,"negative daily balance red");
+        Check(profile.Record=="1-4"&&profile.RecordColor==Palette.Loss,"negative daily balance red");
         profile.Matches.Clear();HistoryLogic.CountDay(profile,DateTime.Today);Check(profile.Record=="0-0"&&profile.RecordColor==Palette.Muted,"empty day neutral");
         profile.Matches.Add(new MatchRow{Id="unknown",Started=now,Result=Outcome.Unknown});HistoryLogic.CountDay(profile,DateTime.Today);Check(profile.Record=="0-0*"&&!profile.DayComplete,"unknown results label balance partial");
         Check(HistoryLogic.LocalTime(Millis(DateTime.Today.AddMinutes(-1))).Date==DateTime.Today.AddDays(-1)&&HistoryLogic.LocalTime(Millis(DateTime.Today.AddMinutes(1))).Date==DateTime.Today,"local midnight boundary respected");

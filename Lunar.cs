@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 [assembly: System.Reflection.AssemblyTitle("Lunar")]
 [assembly: System.Reflection.AssemblyProduct("Lunar")]
-[assembly: System.Reflection.AssemblyFileVersion("1.85.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.86.0.0")]
 
 namespace Lunar {
 static class Json {
@@ -320,6 +320,9 @@ partial class RiotReader {
 }
 static class Palette {
     public static readonly Color Bg=Color.FromArgb(19,22,28),Sidebar=Color.FromArgb(15,18,23),Panel=Color.FromArgb(29,33,40),Raised=Color.FromArgb(36,40,48),Border=Color.FromArgb(53,59,69),Text=Color.FromArgb(239,241,244),Muted=Color.FromArgb(158,164,174),Accent=Color.FromArgb(183,143,246),AccentSoft=Color.FromArgb(53,43,68),Cyan=Color.FromArgb(198,170,255),Green=Color.FromArgb(73,190,157),Red=Color.FromArgb(183,143,246);
+    // Match results: easy to tell apart at a glance (win green, loss red, draw grey).
+    public static readonly Color Win=Color.FromArgb(67,205,150),Loss=Color.FromArgb(240,86,106),Draw=Color.FromArgb(176,182,194);
+    public static Color ForRate(double? rate){return !rate.HasValue?Muted:rate.Value>50.0001?Win:rate.Value<49.9999?Loss:Draw;}
 }
 class TrackerSurface:Control {
     public Dictionary<string,PlayerProfile> Profiles=new Dictionary<string,PlayerProfile>();

@@ -197,7 +197,12 @@ static class TrackArt {
                     FadeArtEdge(g,new Rectangle(art.X,art.Y,art.Width,6),background,false);
                 }else CoverWithFade(g,map,art,background,.27f,174);
             }
-            using(var stripe=new SolidBrush(accent))g.FillRectangle(stripe,bounds.X,bounds.Y,4,bounds.Height);
+            if(!thumbnail&&bounds.Width>40){
+                // Soft glow of the result colour from the left edge.
+                var glow=new Rectangle(bounds.X,bounds.Y,Math.Max(2,bounds.Width*42/100),bounds.Height);
+                using(var tint=new LinearGradientBrush(glow,Color.FromArgb(52,accent),Color.FromArgb(0,accent),0f))g.FillRectangle(tint,glow);
+            }
+            using(var stripe=new SolidBrush(accent))g.FillRectangle(stripe,bounds.X,bounds.Y,thumbnail?4:5,bounds.Height);
         }
         g.Restore(state);
     }
@@ -676,7 +681,7 @@ class ProfileCanvas:Control {
             int wins=day.Count(match=>match.Completed&&match.Result==Outcome.Win);
             int losses=day.Count(match=>match.Completed&&match.Result==Outcome.Loss);
             historyLines.Add(new HistoryLine{
-                Offset=offset,Height=DayHeadingHeight,Heading=name+" · "+count+" matches",Tally=wins+" W  | "+losses+" L"
+                Offset=offset,Height=DayHeadingHeight,Heading=name+" · "+count+(count==1?" match":" matches"),Tally=wins+" W  | "+losses+" L"
             });
             offset+=DayHeadingHeight;
             foreach(var match in day){
@@ -771,7 +776,7 @@ class ProfileCanvas:Control {
     static readonly Color Purple=Palette.Accent, Cyan=Palette.Cyan;
     static readonly Color PanelColor=Palette.Panel, BorderColor=Palette.Border;
     static Color ResultColor(Outcome result) {
-        return result==Outcome.Win?Cyan:result==Outcome.Loss?Palette.Red:Palette.Muted;
+        return result==Outcome.Win?Palette.Win:result==Outcome.Loss?Palette.Loss:result==Outcome.Draw?Palette.Draw:Palette.Muted;
     }
     static string ResultName(Outcome result) {
         switch(result) {
@@ -817,9 +822,10 @@ class ProfileCanvas:Control {
         for(int i=0;i<labels.Length;i++){
             var metric=new Rectangle(main+15+(w+10)*(i%4),y+58+76*(i/4),w,64);
             DashboardCard(g,metric);
-            using(var line=new Pen(i==2||i==3?Cyan:Purple,1.5f))g.DrawLine(line,metric.X+11,metric.Y+1,metric.Right-11,metric.Y+1);
+            Color top=i==6?Palette.Win:i==7?Palette.Loss:i==3?Palette.ForRate(summary.WinRate):i==2?Cyan:Purple;
+            using(var line=new Pen(top,1.5f))g.DrawLine(line,metric.X+11,metric.Y+1,metric.Right-11,metric.Y+1);
             T(g,labels[i],8,Palette.Muted,new Rectangle(metric.X+9,metric.Y+8,w-16,18),true);
-            T(g,values[i],18,i==6?Cyan:i==7?Palette.Red:Palette.Text,new Rectangle(metric.X+9,metric.Y+25,w-16,32),true);
+            T(g,values[i],18,i==6?Palette.Win:i==7?Palette.Loss:i==3?Palette.ForRate(summary.WinRate):Palette.Text,new Rectangle(metric.X+9,metric.Y+25,w-16,32),true);
         }
     }
     void DrawRank(Graphics g,Rectangle rank){
@@ -848,8 +854,8 @@ class ProfileCanvas:Control {
             int row=y+47+i*48;
             AgentArt.Draw(g,agent.Key,new Rectangle(x+15,row+8,32,32));
             T(g,Catalog.Agent(agent.Key),10,Palette.Text,new Rectangle(x+54,row+3,w-126,21),true);
-            T(g,stats.Games+" matches",8,Palette.Muted,new Rectangle(x+54,row+23,w-126,18));
-            T(g,StatsMetrics.F(stats.WinRate,"%"),10,Cyan,new Rectangle(x+w-66,row+3,60,21),true);
+            T(g,stats.Games+(stats.Games==1?" match":" matches"),8,Palette.Muted,new Rectangle(x+54,row+23,w-126,18));
+            T(g,StatsMetrics.F(stats.WinRate,"%"),10,Palette.ForRate(stats.WinRate),new Rectangle(x+w-66,row+3,60,21),true);
             T(g,StatsMetrics.KD(stats.Totals)+" K/D",8,Palette.Muted,new Rectangle(x+w-66,row+23,60,18));
         }
         y=agentCard.Bottom+14;
@@ -863,7 +869,7 @@ class ProfileCanvas:Control {
             TrackArt.DrawMapPreview(g,maps[i].First(),new Rectangle(x+15,row+7,50,32));
             T(g,maps[i].Key,10,Palette.Text,new Rectangle(x+74,row+3,w-145,22),true);
             T(g,stats.Wins+" W  /  "+stats.Losses+" L",8,Palette.Muted,new Rectangle(x+74,row+23,w-145,19));
-            T(g,StatsMetrics.F(stats.WinRate,"%"),10,Cyan,new Rectangle(x+w-66,row+4,60,21),true);
+            T(g,StatsMetrics.F(stats.WinRate,"%"),10,Palette.ForRate(stats.WinRate),new Rectangle(x+w-66,row+4,60,21),true);
         }
     }
     void Matches(Graphics g) {
@@ -891,7 +897,10 @@ class ProfileCanvas:Control {
             if(line.Match!=null)DrawMatchRow(g,line.Match,new Rectangle(area.X+7,y,area.Width-14,MatchRowHeight-4));
             else{
                 T(g,line.Heading,9,Palette.Muted,new Rectangle(area.X+15,y,area.Width-125,DayHeadingHeight),true);
-                T(g,line.Tally,9,Palette.Muted,new Rectangle(area.Right-94,y,86,DayHeadingHeight),true);
+                var tally=System.Text.RegularExpressions.Regex.Match(line.Tally??"",@"(\d+)\D+(\d+)");
+                Color tallyColor=Palette.Muted;
+                if(tally.Success){int w=int.Parse(tally.Groups[1].Value),l=int.Parse(tally.Groups[2].Value);tallyColor=w>l?Palette.Win:w<l?Palette.Loss:Palette.Draw;}
+                T(g,line.Tally,9,tallyColor,new Rectangle(area.Right-94,y,86,DayHeadingHeight),true);
             }
         }
         return area.Bottom;
@@ -905,13 +914,28 @@ class ProfileCanvas:Control {
         T(g,match.Queue+" · "+match.Started.ToString("HH:mm"),8,Palette.Muted,new Rectangle(mapX,row.Y+31,scoreX-mapX-6,20));
         string score=match.Score=="—"?ResultName(match.Result):match.Score;
         T(g,score,12,accent,new Rectangle(scoreX,row.Y+7,row.Width/5,25),true);
-        T(g,match.RRChange.HasValue?ResultName(match.Result)+" · "+match.RRChange.Value.ToString("+0;-0;0")+" RR":ResultName(match.Result),
-            8,accent,new Rectangle(scoreX,row.Y+32,row.Width/5,20),true);
+        ResultPill(g,match,accent,new Point(scoreX,row.Y+33));
         MatchMetric(g,row,56,match.Kda,"K / D / A");
         MatchMetric(g,row,74,StatsMetrics.F(match.Metrics.HS,"%"),"HS%");
         var stats=match.Metrics;
         MatchMetric(g,row,87,StatsMetrics.F(stats.HasScore&&stats.Rounds>0?(double?)stats.Score/stats.Rounds:null),"ACS");
         hits.Add(new KeyValuePair<Rectangle,MatchRow>(new Rectangle(row.X,row.Y-scroll,row.Width,row.Height),match));
+    }
+    // Filled result badge (WIN / LOSS / DRAW) plus the RR change, so the outcome reads at a glance.
+    static readonly Font PillFont=new Font("Segoe UI",7.5f,FontStyle.Bold);
+    static void ResultPill(Graphics g,MatchRow match,Color accent,Point origin){
+        string label=match.Result==Outcome.Win?"WIN":match.Result==Outcome.Loss?"LOSS":match.Result==Outcome.Draw?"DRAW":"No result";
+        var size=LunarText.MeasureText(g,label,PillFont,Size.Empty,TextFormatFlags.NoPadding|TextFormatFlags.NoPrefix);
+        var pill=new Rectangle(origin.X,origin.Y,size.Width+16,18);
+        var smooth=g.SmoothingMode;g.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        using(var shape=Skin.Round(pill,9))
+        using(var fill=new SolidBrush(Color.FromArgb(match.Result==Outcome.Draw?70:58,accent)))
+        using(var edge=new Pen(Color.FromArgb(150,accent))){g.FillPath(fill,shape);g.DrawPath(edge,shape);}
+        g.SmoothingMode=smooth;
+        LunarText.DrawText(g,label,PillFont,pill,Color.FromArgb(Math.Min(255,accent.R+30),Math.Min(255,accent.G+30),Math.Min(255,accent.B+30)),
+            TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix|TextFormatFlags.NoPadding);
+        if(match.RRChange.HasValue)
+            T(g,match.RRChange.Value.ToString("+0;-0;0")+" RR",8,accent,new Rectangle(pill.Right+7,pill.Y-1,90,20),true);
     }
     static void MatchMetric(Graphics g,Rectangle row,int position,string value,string label) {
         int x=row.X+row.Width*position/100;
@@ -921,7 +945,7 @@ class ProfileCanvas:Control {
     }
     void Groups(Graphics g,bool agents){var groups=Rows.Where(m=>m.Completed&&m.Result!=Outcome.Ignored).GroupBy(m=>agents?m.AgentId:m.Map).OrderByDescending(gr=>gr.Count()).ToList();
         string[] titles={agents?"AGENT":"MAP","MATCHES","W–L","WIN RATE","K/D","ADR","HS%"};int[] xs={42,Width-570,Width-475,Width-385,Width-270,Width-185,Width-100};for(int i=0;i<titles.Length;i++)T(g,titles[i],8,Palette.Muted,new Rectangle(xs[i],44,i==0?Width-650:100,24));
-        for(int i=0;i<groups.Count;i++){var group=groups[i];var s=new Summary(group);int y=80+i*62;var card=new Rectangle(26,y,Width-52,54);if(agents)Box(g,card);else TrackArt.DrawMap(g,group.First(),card,Color.FromArgb(123,83,174),true);string[] cells={agents?Catalog.Agent(group.Key):group.Key,s.Games.ToString(),s.Wins+"-"+s.Losses,StatsMetrics.F(s.WinRate,"%"),StatsMetrics.KD(s.Totals),StatsMetrics.F(s.ADR),StatsMetrics.F(s.Totals.HS,"%")};for(int c=0;c<cells.Length;c++){if(c==0&&agents){AgentArt.Draw(g,group.Key,new Rectangle(34,y+12,30,30));T(g,cells[c],11,Palette.Text,new Rectangle(73,y+12,Width-723,28),true);}else T(g,cells[c],c==0?11:10,c==2?(s.Wins>s.Losses?Palette.Green:s.Wins<s.Losses?Palette.Red:Palette.Muted):Palette.Text,new Rectangle(xs[c],y+12,c==0?Width-650:100,28),c==0);}}
+        for(int i=0;i<groups.Count;i++){var group=groups[i];var s=new Summary(group);int y=80+i*62;var card=new Rectangle(26,y,Width-52,54);if(agents)Box(g,card);else TrackArt.DrawMap(g,group.First(),card,Color.FromArgb(123,83,174),true);string[] cells={agents?Catalog.Agent(group.Key):group.Key,s.Games.ToString(),s.Wins+"-"+s.Losses,StatsMetrics.F(s.WinRate,"%"),StatsMetrics.KD(s.Totals),StatsMetrics.F(s.ADR),StatsMetrics.F(s.Totals.HS,"%")};for(int c=0;c<cells.Length;c++){if(c==0&&agents){AgentArt.Draw(g,group.Key,new Rectangle(34,y+12,30,30));T(g,cells[c],11,Palette.Text,new Rectangle(73,y+12,Width-723,28),true);}else T(g,cells[c],c==0?11:10,c==2?(s.Wins>s.Losses?Palette.Win:s.Wins<s.Losses?Palette.Loss:Palette.Muted):c==3?Palette.ForRate(s.WinRate):Palette.Text,new Rectangle(xs[c],y+12,c==0?Width-650:100,28),c==0);}}
         if(groups.Count==0)T(g,"No data matches these filters.",12,Palette.Muted,new Rectangle(42,100,Width-84,45));contentHeight=Math.Max(220,groups.Count*62+100);
     }
 }

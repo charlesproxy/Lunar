@@ -345,8 +345,8 @@ sealed class DesktopIntegration:IDisposable {
     internal bool UpdateReady {get{return pendingUpdate!=null;}}
     internal void CheckUpdatesNow(){nextUpdateCheck=DateTime.MinValue;CheckUpdates();}
     DateTime lastUpdateCheck=DateTime.MinValue;
-    // Opening the window also checks, at most once a minute.
-    internal void CheckUpdatesSoon(){if(DateTime.UtcNow-lastUpdateCheck>TimeSpan.FromMinutes(1))CheckUpdatesNow();}
+    // Opening the window also checks, at most once every 2 minutes.
+    internal void CheckUpdatesSoon(){if(DateTime.UtcNow-lastUpdateCheck>TimeSpan.FromMinutes(2))CheckUpdatesNow();}
     void ExitWithUpdate(bool restart){
         if(restart&&pendingUpdate!=null){
             try{LunarUpdates.Start(pendingUpdate,restart);}

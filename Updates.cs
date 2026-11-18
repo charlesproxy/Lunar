@@ -95,12 +95,47 @@ static class LunarUpdates {
             }
         }
     }
+    const string LatestPage="https://github.com/mucalol640-glitch/Lunar/releases/latest";
     const string LatestApi="https://api.github.com/repos/mucalol640-glitch/Lunar/releases/latest";
-    static string latestTag,latestEtag;
-    // Asks the GitHub API for the newest release tag. Uses ETag: an unchanged answer is a 304, which is fast and does
-    // not count against GitHub's rate limit, so Lunar can check every few minutes. The API is not CDN-cached like the
-    // releases/latest/download redirect, so a new release is seen right away.
+    static readonly Regex TagPattern=new Regex(@"/releases/tag/(v\d+\.\d+(?:\.\d+)?)/?\z",RegexOptions.Compiled);
+    static string latestTag,latestEtag,latestSource="";
+    static DateTime apiBlockedUntil=DateTime.MinValue;
+    // Newest release tag. Primary: the github.com/releases/latest redirect, read without following it (only the
+    // Location header). It is not the REST API, so it has no 60-requests-per-hour limit. Fallback: the REST API with
+    // ETag, which backs off until GitHub's reset time if the limit is ever reached.
     static async Task<string> LatestTag(CancellationToken cancellation){
+        try{
+            string tag=await RedirectTag(cancellation).ConfigureAwait(false);
+            latestTag=tag;latestSource="github.com";
+            return tag;
+        }catch(OperationCanceledException){throw;}
+        catch(Exception){}
+        if(DateTime.UtcNow<apiBlockedUntil)throw new InvalidOperationException("GitHub API rate limit; waiting until "+apiBlockedUntil.ToLocalTime().ToString("HH:mm"));
+        string api=await ApiTag(cancellation).ConfigureAwait(false);
+        latestSource="api.github.com";
+        return api;
+    }
+    static async Task<string> RedirectTag(CancellationToken cancellation){
+        var request=(HttpWebRequest)WebRequest.Create(LatestPage+"?t="+DateTime.UtcNow.Ticks);
+        request.UserAgent="Lunar Update";
+        request.Method="HEAD";
+        request.AllowAutoRedirect=false;
+        using(var timeout=CancellationTokenSource.CreateLinkedTokenSource(cancellation)){
+            timeout.CancelAfter(TimeSpan.FromSeconds(20));
+            using(timeout.Token.Register(request.Abort)){
+                HttpWebResponse response;
+                try{response=(HttpWebResponse)await request.GetResponseAsync().ConfigureAwait(false);}
+                catch(WebException error){response=error.Response as HttpWebResponse;if(response==null)throw;}
+                using(response){
+                    string location=response.Headers[HttpResponseHeader.Location]??"";
+                    var match=TagPattern.Match(location);
+                    if((int)response.StatusCode/100!=3||!match.Success)throw new InvalidDataException("Unexpected latest-release redirect.");
+                    return match.Groups[1].Value;
+                }
+            }
+        }
+    }
+    static async Task<string> ApiTag(CancellationToken cancellation){
         var request=(HttpWebRequest)WebRequest.Create(LatestApi);
         request.UserAgent="Lunar Update";
         request.Accept="application/vnd.github+json";
@@ -121,22 +156,32 @@ static class LunarUpdates {
                 }catch(WebException error){
                     var response=error.Response as HttpWebResponse;
                     if(response!=null&&response.StatusCode==HttpStatusCode.NotModified&&latestTag!=null){response.Close();return latestTag;}
-                    if(response!=null)response.Close();
+                    if(response!=null){
+                        // 403/429 with no remaining requests: stay away from the API until GitHub's reset time.
+                        long reset;
+                        if(((int)response.StatusCode==403||(int)response.StatusCode==429)&&
+                            (response.Headers["X-RateLimit-Remaining"]=="0"||response.Headers["Retry-After"]!=null)){
+                            DateTime until=DateTime.UtcNow.AddMinutes(30);
+                            if(Int64.TryParse(response.Headers["X-RateLimit-Reset"],out reset))until=new DateTime(1970,1,1,0,0,0,DateTimeKind.Utc).AddSeconds(reset).AddSeconds(5);
+                            apiBlockedUntil=until;
+                        }
+                        response.Close();
+                    }
                     throw;
                 }
             }
         }
     }
-    // Diagnostics: "--update-probe" prints what the update check sees (does not download or apply anything).
+    // Diagnostics: "--update-probe" prints what the update check sees (does not apply anything).
     internal static int Probe(){
         try{
             System.Net.ServicePointManager.SecurityProtocol|=SecurityProtocolType.Tls12;
             var clock=Stopwatch.StartNew();
             string first=LatestTag(CancellationToken.None).GetAwaiter().GetResult();
-            Console.WriteLine("latest="+first+" etag="+(latestEtag??"-")+" in "+clock.ElapsedMilliseconds+" ms");
+            Console.WriteLine("latest="+first+" via "+latestSource+" in "+clock.ElapsedMilliseconds+" ms");
             clock.Restart();
             string second=LatestTag(CancellationToken.None).GetAwaiter().GetResult();
-            Console.WriteLine("again="+second+" (cached via ETag) in "+clock.ElapsedMilliseconds+" ms");
+            Console.WriteLine("again="+second+" via "+latestSource+" in "+clock.ElapsedMilliseconds+" ms");
             Console.WriteLine("current="+DisplayVersion+" newer="+(Normalize(new Version(second.Substring(1)))>Normalize(CurrentVersion)));
             var staged=Prepare(CancellationToken.None).GetAwaiter().GetResult();
             Console.WriteLine("prepare="+(staged??"nothing newer"));
@@ -144,7 +189,22 @@ static class LunarUpdates {
         }catch(Exception e){Console.WriteLine("error: "+e.Message);return 1;}
     }
     static Version Normalize(Version v){return new Version(v.Major,v.Minor,Math.Max(0,v.Build),Math.Max(0,v.Revision));}
+    // Removes update folders left by earlier updates (each keeps a copy of the updater). Recent folders are kept so
+    // an update that is applying right now is never touched.
+    static void CleanOldUpdates(){
+        try{
+            if(!Directory.Exists(Root))return;
+            foreach(var folder in Directory.GetDirectories(Root)){
+                Guid id;
+                if(!Guid.TryParseExact(Path.GetFileName(folder),"N",out id))continue;
+                if(DateTime.UtcNow-Directory.GetLastWriteTimeUtc(folder)<TimeSpan.FromHours(6))continue;
+                try{Directory.Delete(folder,true);}catch(IOException){}catch(UnauthorizedAccessException){}
+            }
+        }catch(Exception){}
+    }
+    static bool cleaned;
     internal static async Task<string> Prepare(CancellationToken cancellation){
+        if(!cleaned){cleaned=true;CleanOldUpdates();}
         string manifestUrl;
         try{
             string tag=await LatestTag(cancellation).ConfigureAwait(false);
