@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 [assembly: System.Reflection.AssemblyTitle("Lunar")]
 [assembly: System.Reflection.AssemblyProduct("Lunar")]
-[assembly: System.Reflection.AssemblyFileVersion("1.87.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.88.0.0")]
 
 namespace Lunar {
 static class Json {
@@ -1052,6 +1052,14 @@ static class Program {
         if(args.Length==1&&args[0]=="--apply-update")return LunarUpdates.Apply();
         if(args.Contains("--self-test")) {SearchChecks.Run();Tests.Run();HistoryChecks.Run();RiotStatsChecks.Run();return ProfileChecks.Run();}
         if(args.Contains("--language-test"))return LunarLanguage.Run();
+        if(args.Length==2&&args[0]=="--dump-tile"){
+            var row=new MatchRow{Map="Ascent",MapId=TrackArt.MapId("Ascent")};
+            for(int i=0;i<200&&TrackArt.MapReady(row)==false;i++){System.Threading.Thread.Sleep(50);Application.DoEvents();}
+            using(var b=new Bitmap(420,80)){using(var g=Graphics.FromImage(b)){g.Clear(Color.FromArgb(255,0,255));TrackArt.DrawMap(g,row,new Rectangle(10,9,400,62),Palette.Win);}
+                foreach(int y in new[]{8,9,10,11,12,69,70,71})Console.WriteLine("y="+y+" x=300 "+b.GetPixel(300,y));
+                b.Save(args[1]);}
+            return 0;
+        }
         if(args.Contains("--update-probe"))return LunarUpdates.Probe();
         if(args.Contains("--probe")) {var s=new RiotReader().Poll();Console.WriteLine(s.Status+" | "+s.Detail);return 0;}
         Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);

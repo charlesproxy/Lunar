@@ -117,7 +117,8 @@ static class TrackArt {
     public static void CoverWithFade(Graphics g,Image image,Rectangle bounds,Color background,float fadeStart,int rightShade){
         // Cover the full clipped surface so the art and the solid color never meet at a hard edge.
         Cover(g,image,bounds,.045f);
-        using(var shade=new LinearGradientBrush(bounds,background,background,0f)){
+        using(var shade=new LinearGradientBrush(Rectangle.Inflate(bounds,2,0),background,background,0f)){
+            shade.WrapMode=WrapMode.TileFlipXY;
             shade.InterpolationColors=new ColorBlend{
                 Colors=new[]{background,background,Color.FromArgb(rightShade,background)},
                 Positions=new[]{0f,fadeStart,1f}
@@ -126,12 +127,21 @@ static class TrackArt {
         }
         FadeArtEdge(g,new Rectangle(bounds.X,bounds.Y,bounds.Width,8),background,false);
         FadeArtEdge(g,new Rectangle(bounds.X,bounds.Bottom-5,bounds.Width,5),background,true);
+        // The image's outermost pixels survive the fades as a light hairline; cover them with the panel colour.
+        using(var edge=new SolidBrush(background)){
+            g.FillRectangle(edge,bounds.X,bounds.Y,bounds.Width,2);
+            g.FillRectangle(edge,bounds.X,bounds.Bottom-1,bounds.Width,1);
+        }
     }
     static void FadeArtEdge(Graphics g,Rectangle strip,Color background,bool bottom){
         var transparent=Color.FromArgb(0,background);
-        using(var brush=new LinearGradientBrush(strip,bottom?transparent:background,bottom?background:transparent,90f))
+        // Brush slightly larger than the strip, flip-wrapped: GDI+ otherwise repeats one line of the start colour.
+        using(var brush=new LinearGradientBrush(Rectangle.Inflate(strip,0,1),bottom?transparent:background,bottom?background:transparent,90f)){
+            brush.WrapMode=WrapMode.TileFlipXY;
             g.FillRectangle(brush,strip);
+        }
     }
+    internal static bool MapReady(MatchRow match){return MapImage(MapArtKey(match))!=null;}
     static string MapArtKey(MatchRow match){
         string key=match.MapId;
         Guid id;
@@ -188,23 +198,34 @@ static class TrackArt {
             g.SetClip(shape,System.Drawing.Drawing2D.CombineMode.Intersect);
             using(var fill=new SolidBrush(Palette.Panel))g.FillRectangle(fill,bounds);
             if(map!=null){
-                var art=Rectangle.Inflate(bounds,-1,-1);
+                var art=bounds; // art fills the whole rounded tile: no 1px frame above the map
                 var background=Palette.Panel;
                 if(thumbnail){
                     Cover(g,map,art,.045f);
-                    using(var shade=new LinearGradientBrush(art,Color.FromArgb(135,background),Color.FromArgb(222,background),0f))
+                    using(var shade=new LinearGradientBrush(Rectangle.Inflate(art,2,0),Color.FromArgb(135,background),Color.FromArgb(222,background),0f)){
+                        shade.WrapMode=WrapMode.TileFlipXY;
                         g.FillRectangle(shade,art);
+                    }
                     FadeArtEdge(g,new Rectangle(art.X,art.Y,art.Width,6),background,false);
                 }else CoverWithFade(g,map,art,background,.27f,174);
             }
             if(!thumbnail&&bounds.Width>40){
                 // Soft glow of the result colour from the left edge.
                 var glow=new Rectangle(bounds.X,bounds.Y,Math.Max(2,bounds.Width*42/100),bounds.Height);
-                using(var tint=new LinearGradientBrush(glow,Color.FromArgb(52,accent),Color.FromArgb(0,accent),0f))g.FillRectangle(tint,glow);
+                using(var tint=new LinearGradientBrush(Rectangle.Inflate(glow,2,0),Color.FromArgb(52,accent),Color.FromArgb(0,accent),0f)){
+                    tint.WrapMode=WrapMode.TileFlipXY;
+                    g.FillRectangle(tint,glow);
+                }
             }
             using(var stripe=new SolidBrush(accent))g.FillRectangle(stripe,bounds.X,bounds.Y,thumbnail?4:5,bounds.Height);
         }
         g.Restore(state);
+        // The scaled map art bleeds one pixel past the rounded clip on the top edge, which showed as a light hairline.
+        // Paint that row (between the rounded corners) with the panel colour so the tile edge blends in.
+        var row=g.Save();
+        g.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.None;
+        using(var edge=new SolidBrush(Palette.Panel))g.FillRectangle(edge,bounds.X+7,bounds.Y,Math.Max(0,bounds.Width-14),1);
+        g.Restore(row);
     }
 }
 sealed class ProfileHeader:Panel {
