@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 [assembly: System.Reflection.AssemblyTitle("Lunar")]
 [assembly: System.Reflection.AssemblyProduct("Lunar")]
-[assembly: System.Reflection.AssemblyFileVersion("1.82.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.83.0.0")]
 
 namespace Lunar {
 static class Json {
@@ -342,7 +342,7 @@ class TrackerSurface:Control {
         tip.SetToolTip(this,p==null?"":LunarLanguage.Translate("Click to view match history for "+p.Name)+LunarLanguage.Translate(peak));
     }}
     protected override void Dispose(bool disposing){if(disposing){tip.Dispose();if(card!=null)card.Dispose();}base.Dispose(disposing);}
-    public Snapshot Data=new Snapshot(); public string Updated="Automatic connection";
+    public Snapshot Data=new Snapshot(); public string Updated="Automatic connection"; public string Warning="";
     Image card;
     public void SetCard(byte[] data){
         if(card!=null){card.Dispose();card=null;}
@@ -398,18 +398,32 @@ class TrackerSurface:Control {
         T(g,Data.Map==""||Data.Map=="Map unavailable"?"Live Match":Data.Map+"  ·  Live Match",12,Palette.Text,new Rectangle(x+18,34,w-210,32),true);
         Badge(g,"  "+(Data.Status=="IN MATCH"?"IN MATCH":Data.Status=="AGENT SELECT"?"AGENT SELECT":"WAITING"),new Rectangle(x+w-150,40,130,22),Palette.Muted);
         L(g,x,79,w);
+        int bannerH=Warning==""?0:54;
+        if(bannerH>0)DrawWarning(g,new Rectangle(x+12,Height-24-bannerH,w-24,bannerH-8));
         if(SingleRoster(Data)){
-            Team(g,new Rectangle(x,80,w,Height-104),"Players · Deathmatch",Data.Allies,"",Palette.Muted,parties);
+            Team(g,new Rectangle(x,80,w,Height-104-bannerH),"Players · Deathmatch",Data.Allies,"",Palette.Muted,parties);
             return;
         }
-        rosterScroll=0;int sectionH=(Height-128)/2;
+        rosterScroll=0;int sectionH=(Height-128-bannerH)/2;
         Team(g,new Rectangle(x,80,w,sectionH),"Your team",Data.Allies,side,sideColor,parties);
         string enemySide=side=="Defense"?"Attack":side=="Attack"?"Defense":"";
         Team(g,new Rectangle(x,80+sectionH,w,sectionH),"Enemy team",Data.Enemies,enemySide,side=="Defense"?Palette.Red:Color.FromArgb(94,158,215),parties);
     }
+    // Amber strip at the bottom of the live board while VALORANT runs in exclusive Fullscreen.
+    void DrawWarning(Graphics g,Rectangle r){
+        var smooth=g.SmoothingMode;g.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        using(var shape=Skin.Round(r,10))
+        using(var fill=new SolidBrush(Color.FromArgb(46,245,190,95)))
+        using(var edge=new Pen(Color.FromArgb(120,245,190,95))){g.FillPath(fill,shape);g.DrawPath(edge,shape);}
+        g.SmoothingMode=smooth;
+        using(var font=new Font("Segoe UI",8.5f,FontStyle.Bold))
+            LunarText.DrawText(g,Warning,font,new Rectangle(r.X+14,r.Y+2,r.Width-28,r.Height-4),Color.FromArgb(250,214,150),TextFormatFlags.WordBreak|TextFormatFlags.VerticalCenter|TextFormatFlags.EndEllipsis|TextFormatFlags.NoPrefix);
+    }
     void Team(Graphics g,Rectangle r,string title,List<Player> players,string side,Color color,Dictionary<string,Color> parties){
         T(g,title,10,Palette.Text,new Rectangle(r.X+18,r.Y+5,190,30),true);
-        if(side!=""&&side!="Waiting")Badge(g,"  "+side.ToUpperInvariant(),new Rectangle(r.X+131,r.Y+11,73,19),color);
+        int badgeX=131;
+        using(var titleFont=new Font("Segoe UI",10,FontStyle.Bold))badgeX=Math.Max(131,18+LunarText.MeasureText(title,titleFont).Width+10);
+        if(side!=""&&side!="Waiting")Badge(g,"  "+side.ToUpperInvariant(),new Rectangle(r.X+badgeX,r.Y+11,73,19),color);
         T(g,players.Count+" players",8,Palette.Muted,new Rectangle(r.Right-96,r.Y+7,83,25));L(g,r.X,r.Y+40,r.Width);
         bool showPeakName=r.Width>=690;
         int peakX=r.Right-(showPeakName?307:238),rankX=peakX-145;
@@ -496,6 +510,7 @@ class Window:LunarForm,IMessageFilter {
     bool isPreview;DateTime statsHold=DateTime.MinValue;
     TrackerSurface surface;bool busy;
     UpdateReadyCard updateNotice;
+    readonly FullscreenNoticeCard fullscreenNotice=new FullscreenNoticeCard();
     Action restartForUpdate;
     Label languageTitle,languageDescription,languageHelp,hotkeyTitle,hotkeyCurrent,hotkeyHelp,versionFooter;
     SoftSelect languageSelect;
@@ -550,6 +565,8 @@ class Window:LunarForm,IMessageFilter {
         ApplyLanguage();
         Resize+=delegate{if(updateNotice.Visible)updateNotice.Present(ClientSize,false);};
         Controls.Add(updateNotice);
+        Controls.Add(fullscreenNotice);
+        Resize+=delegate{if(fullscreenNotice.Visible)PlaceFullscreenNotice();};
         SwitchPage(true);
         Activated+=delegate{if(updateNotice.Visible)updateNotice.Present(ClientSize,false);};
         var discord=new DiscordToggle{Checked=true,Location=new Point(0,36),Size=new Size(162,37)};
@@ -582,6 +599,18 @@ class Window:LunarForm,IMessageFilter {
         if(updateNotice==null||IsDisposed)return;
         updateNotice.Version=version??"";
         updateNotice.Present(ClientSize,true);
+    }
+    int NoticeOffset{get{return updateNotice!=null&&updateNotice.Visible?updateNotice.Height+12:0;}}
+    void PlaceFullscreenNotice(){fullscreenNotice.Present(ClientSize,NoticeOffset);}
+    // Explains a missed overlay (exclusive Fullscreen). Stacks above the Update ready card when both are shown.
+    internal void ShowFullscreenNotice(){
+        if(IsDisposed||FullscreenNoticeCard.Disabled)return;
+        PlaceFullscreenNotice();
+    }
+    internal void SetFullscreenWarning(bool active){
+        if(surface==null)return;
+        surface.Warning=active?"⚠ VALORANT is in exclusive Fullscreen: the overlay and the hotkey can't appear over the game. Use Windowed Fullscreen.":"";
+        surface.Invalidate();
     }
     internal void HideUpdateReady(){if(updateNotice!=null)updateNotice.Visible=false;restartForUpdate=null;}
     protected override void OnHandleCreated(EventArgs e){
@@ -983,6 +1012,13 @@ class Window:LunarForm,IMessageFilter {
     }
     public void RenderTab(string path,int tab){SwitchPage(true);home.ActivateTab(tab);home.Refresh();Application.DoEvents();using(var b=new Bitmap(Width,Height)){DrawToBitmap(b,new Rectangle(0,0,b.Width,b.Height));b.Save(path);}}
     public void RenderDetail(string path){home.RenderMatch(path);}
+    [DllImport("user32.dll")] static extern bool PrintWindow(IntPtr hwnd,IntPtr hdc,uint flags);
+    public void RenderFullscreen(string path){
+        SwitchPage(false);SetFullscreenWarning(true);ShowUpdateReady(delegate{},"1.83");
+        fullscreenNotice.Present(ClientSize,NoticeOffset);
+        var stop=DateTime.UtcNow.AddSeconds(1.5);while(DateTime.UtcNow<stop){Application.DoEvents();System.Threading.Thread.Sleep(15);}
+        using(var b=new Bitmap(Width,Height)){using(var g=Graphics.FromImage(b)){var hdc=g.GetHdc();try{PrintWindow(Handle,hdc,2);}finally{g.ReleaseHdc(hdc);}}b.Save(path);}
+    }
     public void RenderSettings(string path){ShowSettings();settingsView.PerformLayout();Application.DoEvents();Refresh();using(var b=new Bitmap(Width,Height)){DrawToBitmap(b,new Rectangle(0,0,b.Width,b.Height));b.Save(path);}}
     public void RenderStore(string path){
         ShowStore();
@@ -1037,7 +1073,7 @@ static class Program {
             return 0;
         }
         if(args.Length==2 && args[0].StartsWith("--render")) {
-            using(var window=new Window(true)) { if(args[0]!="--render")window.Demo();if(args[0]=="--render-small")window.Size=window.MinimumSize;window.Show();Application.DoEvents();{var warm=DateTime.UtcNow.AddSeconds(6);while(DateTime.UtcNow<warm){Application.DoEvents();System.Threading.Thread.Sleep(40);}}if(args[0]=="--render-tracker"){window.ShowTracker();Application.DoEvents();using(var b=new Bitmap(window.Width,window.Height)){window.DrawToBitmap(b,new Rectangle(0,0,b.Width,b.Height));b.Save(args[1]);}}else if(args[0]=="--render-history")window.RenderHistory(args[1]);else if(args[0]=="--render-matches")window.RenderTab(args[1],1);else if(args[0]=="--render-agents")window.RenderTab(args[1],2);else if(args[0]=="--render-maps")window.RenderTab(args[1],3);else if(args[0]=="--render-detail")window.RenderDetail(args[1]);else if(args[0]=="--render-store")window.RenderStore(args[1]);else if(args[0]=="--render-settings")window.RenderSettings(args[1]);else using(var bitmap=new Bitmap(window.Width,window.Height)) {window.DrawToBitmap(bitmap,new Rectangle(0,0,bitmap.Width,bitmap.Height));bitmap.Save(args[1]);}window.Close();}return 0;
+            using(var window=new Window(true)) { if(args[0]!="--render")window.Demo();if(args[0]=="--render-small")window.Size=window.MinimumSize;window.Show();Application.DoEvents();{var warm=DateTime.UtcNow.AddSeconds(6);while(DateTime.UtcNow<warm){Application.DoEvents();System.Threading.Thread.Sleep(40);}}if(args[0]=="--render-tracker"){window.ShowTracker();Application.DoEvents();using(var b=new Bitmap(window.Width,window.Height)){window.DrawToBitmap(b,new Rectangle(0,0,b.Width,b.Height));b.Save(args[1]);}}else if(args[0]=="--render-history")window.RenderHistory(args[1]);else if(args[0]=="--render-matches")window.RenderTab(args[1],1);else if(args[0]=="--render-agents")window.RenderTab(args[1],2);else if(args[0]=="--render-maps")window.RenderTab(args[1],3);else if(args[0]=="--render-detail")window.RenderDetail(args[1]);else if(args[0]=="--render-store")window.RenderStore(args[1]);else if(args[0]=="--render-settings")window.RenderSettings(args[1]);else if(args[0]=="--render-fullscreen")window.RenderFullscreen(args[1]);else using(var bitmap=new Bitmap(window.Width,window.Height)) {window.DrawToBitmap(bitmap,new Rectangle(0,0,bitmap.Width,bitmap.Height));bitmap.Save(args[1]);}window.Close();}return 0;
         }
         DesktopShortcut.Ensure();
         Application.Run(new Window());return 0;

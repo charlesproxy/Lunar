@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.IO;
 using System.Windows.Forms;
 
 namespace Lunar {
@@ -247,5 +248,75 @@ sealed class UpdateReadyCard:Control {
         else if(CloseBounds.Contains(e.Location))Visible=false; // tray "Install update" stays available
     }
     protected override void Dispose(bool disposing){if(disposing){animation.Dispose();Font.Dispose();}base.Dispose(disposing);}
+}
+
+// Bottom-right warning: the overlay could not open because VALORANT is in exclusive Fullscreen.
+sealed class FullscreenNoticeCard:Control {
+    static readonly string OffPath=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Lunar","fullscreen-notice.txt");
+    static readonly Color Amber=Color.FromArgb(245,190,95),AmberDeep=Color.FromArgb(214,140,52);
+    int hover=-1;bool pressed;
+    public FullscreenNoticeCard(){
+        SetStyle(ControlStyles.UserPaint|ControlStyles.AllPaintingInWmPaint|ControlStyles.OptimizedDoubleBuffer|ControlStyles.ResizeRedraw,true);
+        Size=new Size(412,152);BackColor=Palette.Bg;Visible=false;TabStop=false;
+    }
+    public static bool Disabled{get{try{return File.Exists(OffPath);}catch(Exception){return false;}}}
+    static void Disable(){try{Directory.CreateDirectory(Path.GetDirectoryName(OffPath));File.WriteAllText(OffPath,"off");}catch(Exception){}}
+    Rectangle Primary{get{return new Rectangle(Width-128,Height-46,110,32);}}
+    Rectangle Secondary{get{return new Rectangle(Width-128-8-150,Height-46,150,32);}}
+    public void Present(Size client,int bottomOffset){
+        Left=Math.Max(12,client.Width-Width-18);
+        Top=Math.Max(12,client.Height-Height-18-bottomOffset);
+        Visible=true;BringToFront();Invalidate();
+    }
+    protected override void OnSizeChanged(EventArgs e){
+        base.OnSizeChanged(e);
+        if(Width>40&&Height>40)using(var shape=Skin.Round(new Rectangle(0,0,Width,Height),18))Region=new Region(shape);
+    }
+    protected override void OnPaint(PaintEventArgs e){
+        var g=e.Graphics;g.SmoothingMode=SmoothingMode.AntiAlias;
+        var card=new Rectangle(0,0,Width-1,Height-1);
+        using(var shape=Skin.Round(card,18)){
+            using(var fill=new LinearGradientBrush(card,Color.FromArgb(58,44,30),Palette.Panel,LinearGradientMode.Horizontal))g.FillPath(fill,shape);
+            using(var edge=new LinearGradientBrush(card,Color.FromArgb(200,Amber),Color.FromArgb(60,Amber),LinearGradientMode.Horizontal))
+            using(var pen=new Pen(edge,1.2f))g.DrawPath(pen,shape);
+        }
+        // Warning tile.
+        var tile=new Rectangle(18,18,42,42);
+        using(var shape=Skin.Round(tile,12))using(var fill=new LinearGradientBrush(tile,Amber,AmberDeep,LinearGradientMode.ForwardDiagonal))g.FillPath(fill,shape);
+        using(var pen=new Pen(Color.FromArgb(40,26,10),2.4f){StartCap=LineCap.Round,EndCap=LineCap.Round}){
+            float cx=tile.X+21;g.DrawLine(pen,cx,tile.Y+11,cx,tile.Y+25);
+            using(var dot=new SolidBrush(Color.FromArgb(40,26,10)))g.FillEllipse(dot,cx-1.8f,tile.Y+29.5f,3.6f,3.6f);
+        }
+        int x=tile.Right+14,width=Width-x-18;
+        using(var title=new Font("Segoe UI",10.5f,FontStyle.Bold))
+            LunarText.DrawText(g,"The overlay did not appear",title,new Rectangle(x,14,width,22),Palette.Text,TextFormatFlags.Left|TextFormatFlags.VerticalCenter|TextFormatFlags.EndEllipsis|TextFormatFlags.NoPrefix);
+        using(var body=new Font("Segoe UI",8.5f))
+            LunarText.DrawText(g,"VALORANT is in exclusive Fullscreen. In VALORANT → Settings → Video, set Display Mode to Windowed Fullscreen.",body,
+                new Rectangle(x,38,width,54),Palette.Muted,TextFormatFlags.Left|TextFormatFlags.WordBreak|TextFormatFlags.EndEllipsis|TextFormatFlags.NoPrefix);
+        Button(g,Secondary,"Don't show again",false,hover==1);
+        Button(g,Primary,"Got it",true,hover==0);
+    }
+    void Button(Graphics g,Rectangle r,string text,bool primary,bool hot){
+        if(pressed&&hot)r.Offset(0,1);
+        using(var shape=Skin.Round(r,16)){
+            if(primary)using(var fill=new LinearGradientBrush(r,hot?Color.FromArgb(255,206,120):Amber,hot?Color.FromArgb(230,160,70):AmberDeep,LinearGradientMode.Horizontal))g.FillPath(fill,shape);
+            else using(var fill=new SolidBrush(hot?Color.FromArgb(60,255,255,255):Color.FromArgb(28,255,255,255)))g.FillPath(fill,shape);
+        }
+        using(var font=new Font("Segoe UI",9,FontStyle.Bold))
+            LunarText.DrawText(g,text,font,r,primary?Color.FromArgb(40,26,10):Palette.Text,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix|TextFormatFlags.EndEllipsis);
+    }
+    protected override void OnMouseMove(MouseEventArgs e){
+        base.OnMouseMove(e);
+        int h=Primary.Contains(e.Location)?0:Secondary.Contains(e.Location)?1:-1;
+        if(h!=hover){hover=h;Cursor=h>=0?Cursors.Hand:Cursors.Default;Invalidate();}
+    }
+    protected override void OnMouseLeave(EventArgs e){base.OnMouseLeave(e);hover=-1;pressed=false;Invalidate();}
+    protected override void OnMouseDown(MouseEventArgs e){base.OnMouseDown(e);if(hover>=0){pressed=true;Invalidate();}}
+    protected override void OnMouseUp(MouseEventArgs e){
+        base.OnMouseUp(e);pressed=false;
+        if(Primary.Contains(e.Location))Visible=false;
+        else if(Secondary.Contains(e.Location)){Disable();Visible=false;}
+        Invalidate();
+    }
 }
 }

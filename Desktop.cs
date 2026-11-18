@@ -245,7 +245,7 @@ sealed class DesktopIntegration:IDisposable {
     readonly Timer foreground=new Timer{Interval=350};
     readonly DiscordToggle discordButton;
     readonly ToolStripMenuItem discordMenu;
-    readonly ToolStripLabel trayPhase;
+    readonly ToolStripLabel trayPhase,trayWarning;
     readonly ToolStripMenuItem installUpdate;
     readonly Timer updateTimer=new Timer{Interval=10000};
     readonly System.Threading.CancellationTokenSource updateCancellation=new System.Threading.CancellationTokenSource();
@@ -257,11 +257,10 @@ sealed class DesktopIntegration:IDisposable {
     string pendingMatch="",dismissedMatch="";
     string activeMatch="";
     bool interactiveOverlay;
-    // Fullscreen mode: the overlay is shown topmost WITHOUT taking focus, so VALORANT keeps the foreground and is
-    // not minimized. If Windows still minimizes the game (true exclusive fullscreen), we stop trying this session.
-    bool passiveOverlay,fullscreenBlocked,fullscreenNoticeShown;
-    DateTime fullscreenShownAt=DateTime.MinValue;
-    IntPtr fullscreenGame;
+    // Exclusive fullscreen: Windows cannot draw any window above the game, so the overlay is not shown at all.
+    // Lunar remembers that the overlay was missed and explains how to fix it once the player leaves the game.
+    bool fullscreenActive,overlayMissed;
+    DateTime nextGameProcessCheck;
     IntPtr interactiveGame;
     Rectangle overlayGame;
     Point overlayOffset;
@@ -297,6 +296,9 @@ sealed class DesktopIntegration:IDisposable {
         trayPhase=new ToolStripLabel("Waiting for VALORANT"){ForeColor=Palette.Muted,Margin=new Padding(10,0,10,7),
             TextAlign=ContentAlignment.MiddleLeft};
         menu.Items.Add(trayPhase);
+        trayWarning=new ToolStripLabel(LunarLanguage.Translate("⚠ Exclusive Fullscreen: overlay unavailable")){Tag="⚠ Exclusive Fullscreen: overlay unavailable",
+            ForeColor=Color.FromArgb(245,190,95),Margin=new Padding(10,0,10,7),TextAlign=ContentAlignment.MiddleLeft,Available=false};
+        menu.Items.Add(trayWarning);
         menu.Items.Add(new ToolStripSeparator());
         discordMenu=TrayAction("Discord Presence",ToggleDiscord);
         TrayAction("Open Lunar",delegate{OpenMain();});
@@ -307,6 +309,7 @@ sealed class DesktopIntegration:IDisposable {
         tray=new NotifyIcon{Icon=main.Icon,Text="Lunar",ContextMenuStrip=menu,Visible=true};
         tray.DoubleClick+=delegate{OpenMain();};
         main.FormClosing+=Closing;
+        main.Activated+=delegate{CheckUpdatesSoon();ShowMissedOverlayNotice();};
         main.HandleDestroyed+=delegate{UnregisterShortcut();};
         foreground.Tick+=delegate{SyncOverlay();UpdateDiscordButton();};
         foreground.Start();
@@ -325,7 +328,8 @@ sealed class DesktopIntegration:IDisposable {
         if(pendingUpdate!=null)return;
         if(checkingUpdate||DateTime.UtcNow<nextUpdateCheck)return;
         checkingUpdate=true;
-        nextUpdateCheck=DateTime.UtcNow.AddHours(3);
+        nextUpdateCheck=DateTime.UtcNow.AddMinutes(30);
+        lastUpdateCheck=DateTime.UtcNow;
         var token=updateCancellation.Token;
         try{
             string folder=await LunarUpdates.Prepare(token);
@@ -340,6 +344,9 @@ sealed class DesktopIntegration:IDisposable {
     internal bool UpdateCheckActive {get{return checkingUpdate;}}
     internal bool UpdateReady {get{return pendingUpdate!=null;}}
     internal void CheckUpdatesNow(){nextUpdateCheck=DateTime.MinValue;CheckUpdates();}
+    DateTime lastUpdateCheck=DateTime.MinValue;
+    // Opening the window also checks, at most once every 2 minutes.
+    internal void CheckUpdatesSoon(){if(DateTime.UtcNow-lastUpdateCheck>TimeSpan.FromMinutes(2))CheckUpdatesNow();}
     void ExitWithUpdate(bool restart){
         if(restart&&pendingUpdate!=null){
             try{LunarUpdates.Start(pendingUpdate,restart);}
@@ -396,6 +403,7 @@ sealed class DesktopIntegration:IDisposable {
     }
     void HideMain(){main.Hide();}
     void OpenMain(){
+        CheckUpdatesSoon();
         main.Show();
         if(main.WindowState==FormWindowState.Minimized)main.WindowState=FormWindowState.Normal;
         main.Activate();
@@ -406,10 +414,9 @@ sealed class DesktopIntegration:IDisposable {
         HideOverlayWindows();
     }
     void EndInteraction(){
-        bool restore=interactiveOverlay&&!passiveOverlay&&OverlayHasFocus()&&interactiveGame!=IntPtr.Zero;
+        bool restore=interactiveOverlay&&OverlayHasFocus()&&interactiveGame!=IntPtr.Zero;
         var gameWindow=interactiveGame;
         interactiveOverlay=false;
-        passiveOverlay=false;
         interactiveGame=IntPtr.Zero;
         if(restore)SetForegroundWindow(gameWindow);
     }
@@ -433,13 +440,7 @@ sealed class DesktopIntegration:IDisposable {
     void ToggleOverlay(Rectangle game,IntPtr gameWindow){
         if(selection.Visible&&interactiveOverlay){HideOverlay();return;}
         dismissedMatch="";
-        if(ExclusiveFullscreen()){
-            if(fullscreenBlocked){ShowFullscreenNotice();return;}
-            interactiveGame=gameWindow;
-            interactiveOverlay=true;passiveOverlay=true;
-            ShowPassive(game,gameWindow);
-            return;
-        }
+        if(ExclusiveFullscreen(gameWindow)){MissOverlay();return;}
         interactiveGame=gameWindow;
         interactiveOverlay=true;
         ShowOverlay(game);
@@ -488,46 +489,80 @@ sealed class DesktopIntegration:IDisposable {
         var visible=Rectangle.Intersect(new Rectangle(origin,client.Size),screen);
         return visible.Width>320&&visible.Height>240?visible:Rectangle.Empty;
     }
-    static bool ExclusiveFullscreen(){
+    // True when VALORANT runs in exclusive Fullscreen, where no other window can appear above the game.
+    // Signals: Windows reports a D3D exclusive app, or VALORANT's own settings say Fullscreen (FullscreenMode=0)
+    // while the game window covers its whole monitor.
+    static bool ExclusiveFullscreen(IntPtr gameWindow){
         int state;
-        try{return SHQueryUserNotificationState(out state)==0&&state==RunningExclusiveFullscreen;}
-        catch(EntryPointNotFoundException){return false;}catch(DllNotFoundException){return false;}
+        try{if(SHQueryUserNotificationState(out state)==0&&state==RunningExclusiveFullscreen)return true;}
+        catch(EntryPointNotFoundException){}catch(DllNotFoundException){}
+        return ValorantFullscreenSetting()&&CoversMonitor(gameWindow);
     }
-    // Shows the overlay above a fullscreen game without activating it (the game keeps keyboard focus).
-    void ShowPassive(Rectangle game,IntPtr gameWindow){
-        bool wasVisible=selection.Visible;
-        ShowOverlay(game);
-        backdrop.Hide();
-        const uint NoSize=0x0001,NoMove=0x0002,NoActivate=0x0010,ShowWindow=0x0040;
-        SetWindowPos(selection.Handle,new IntPtr(-1),0,0,0,0,NoSize|NoMove|NoActivate|ShowWindow); // HWND_TOPMOST
-        if(!wasVisible){fullscreenShownAt=DateTime.UtcNow;fullscreenGame=gameWindow;}
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd,out NativeRect bounds);
+    [StructLayout(LayoutKind.Sequential)] struct NativeRect {public int Left,Top,Right,Bottom;}
+    static bool CoversMonitor(IntPtr hwnd){
+        NativeRect r;
+        if(hwnd==IntPtr.Zero||!GetWindowRect(hwnd,out r))return false;
+        var screen=Screen.FromHandle(hwnd).Bounds;
+        return r.Left<=screen.Left&&r.Top<=screen.Top&&r.Right>=screen.Right&&r.Bottom>=screen.Bottom;
     }
-    // True exclusive fullscreen minimizes the game as soon as a topmost window appears: detect it once and stop.
-    bool FullscreenMinimizedGame(){
-        if(fullscreenGame==IntPtr.Zero||DateTime.UtcNow-fullscreenShownAt>TimeSpan.FromSeconds(4))return false;
-        if(!IsIconic(fullscreenGame))return false;
-        var game=fullscreenGame;
-        fullscreenBlocked=true;fullscreenGame=IntPtr.Zero;
-        selection.Hide();backdrop.Hide();
-        interactiveOverlay=false;passiveOverlay=false;interactiveGame=IntPtr.Zero;
-        try{ShowWindowAsync(game,9);SetForegroundWindow(game);}catch(Exception){} // SW_RESTORE: bring the game back
-        ShowFullscreenNotice();
-        return true;
-    }
-    void ShowFullscreenNotice(){
-        if(fullscreenNoticeShown)return;
-        fullscreenNoticeShown=true;
+    static DateTime settingReadAt=DateTime.MinValue;
+    static bool settingFullscreen;
+    // Reads FullscreenMode from the most recently saved VALORANT GameUserSettings.ini (0 = Fullscreen,
+    // 1 = Windowed Fullscreen, 2 = Windowed). Cached for 10 seconds.
+    internal static bool ValorantFullscreenSetting(){
+        if(DateTime.UtcNow-settingReadAt<TimeSpan.FromSeconds(10))return settingFullscreen;
+        settingReadAt=DateTime.UtcNow;settingFullscreen=false;
         try{
-            tray.ShowBalloonTip(8000,"Lunar",LunarLanguage.Translate(
-                "VALORANT is in exclusive Fullscreen, which hides the overlay. In VALORANT → Settings → Video, set Display Mode to Windowed Fullscreen."),ToolTipIcon.Info);
+            string root=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"VALORANT","Saved","Config");
+            if(!Directory.Exists(root))return false;
+            FileInfo latest=null;
+            foreach(var folder in Directory.GetDirectories(root)){
+                var file=new FileInfo(Path.Combine(folder,"Windows","GameUserSettings.ini"));
+                if(file.Exists&&(latest==null||file.LastWriteTimeUtc>latest.LastWriteTimeUtc))latest=file;
+            }
+            var direct=new FileInfo(Path.Combine(root,"Windows","GameUserSettings.ini"));
+            if(direct.Exists&&(latest==null||direct.LastWriteTimeUtc>latest.LastWriteTimeUtc))latest=direct;
+            if(latest==null)return false;
+            foreach(var line in File.ReadLines(latest.FullName)){
+                var text=line.Trim();
+                if(text.StartsWith("FullscreenMode=",StringComparison.OrdinalIgnoreCase)){settingFullscreen=text.Substring(15).Trim()=="0";break;}
+            }
         }catch(Exception){}
+        return settingFullscreen;
+    }
+    // The overlay should have opened (agent select or hotkey) but the game is in exclusive Fullscreen.
+    void MissOverlay(){
+        overlayMissed=true;
+        SetFullscreen(true);
+    }
+    void SetFullscreen(bool active){
+        if(fullscreenActive==active)return;
+        fullscreenActive=active;
+        trayWarning.Available=active;
+        main.SetFullscreenWarning(active);
+    }
+    // Shown once the player is back in Lunar/Windows, because nothing can be shown over the game itself.
+    void ShowMissedOverlayNotice(){
+        if(!overlayMissed)return;
+        overlayMissed=false;
+        main.ShowFullscreenNotice();
+    }
+    static bool GameRunning(){
+        try{var list=Process.GetProcessesByName("VALORANT-Win64-Shipping");bool any=list.Length>0;foreach(var p in list)p.Dispose();return any;}
+        catch(Exception){return true;}
     }
     void SyncOverlay(){
-        if(interactiveOverlay&&!passiveOverlay&&!OverlayHasFocus())HideOverlay();
+        if(interactiveOverlay&&!OverlayHasFocus())HideOverlay();
         var window=ShortcutWindow();
         var game=shortcutActive?ForegroundGame(window):Rectangle.Empty;
         if(game.IsEmpty){
-            FullscreenMinimizedGame();
+            // Back on the desktop after a missed overlay: explain it now that something can be shown.
+            if(overlayMissed&&main.Visible&&main.WindowState!=FormWindowState.Minimized)ShowMissedOverlayNotice();
+            if(fullscreenActive&&DateTime.UtcNow>=nextGameProcessCheck){
+                nextGameProcessCheck=DateTime.UtcNow.AddSeconds(5);
+                if(!GameRunning())SetFullscreen(false);
+            }
             focusedGame=IntPtr.Zero;gameFocusedSince=DateTime.MaxValue;
             UnregisterShortcut();
             watchingFallback=false;
@@ -539,15 +574,19 @@ sealed class DesktopIntegration:IDisposable {
         RegisterShortcut();
         foreground.Interval=registered?350:40;
         if(registered)watchingFallback=false;
-        // Automatic agent-select popup: only after VALORANT has stayed focused for a moment. In fullscreen it is shown
-        // without taking focus; if that still minimizes the game, fullscreen popups are disabled for this session.
-        bool settled=DateTime.UtcNow-gameFocusedSince>=TimeSpan.FromMilliseconds(800);
-        bool fullscreen=ExclusiveFullscreen();
-        bool autoAllowed=interactiveOverlay||(settled&&!(fullscreen&&fullscreenBlocked));
-        if(autoAllowed&&OverlayRequested(pendingMatch,dismissedMatch,interactiveOverlay)){
-            if(fullscreen||passiveOverlay)ShowPassive(game,window);else ShowOverlay(game);
+        // Exclusive fullscreen: nothing can be drawn above the game, so never show an invisible overlay.
+        bool fullscreen=ExclusiveFullscreen(window);
+        SetFullscreen(fullscreen);
+        bool requested=OverlayRequested(pendingMatch,dismissedMatch,interactiveOverlay);
+        if(fullscreen){
+            if(requested&&pendingMatch!=""){overlayMissed=true;dismissedMatch=pendingMatch;}
+            if(interactiveOverlay)HideOverlay();else HideOverlayWindows();
+        }else{
+            // Automatic agent-select popup: only after VALORANT has stayed focused for a moment.
+            bool settled=DateTime.UtcNow-gameFocusedSince>=TimeSpan.FromMilliseconds(800);
+            if((interactiveOverlay||settled)&&requested)ShowOverlay(game);
+            else if(!interactiveOverlay)HideOverlayWindows();
         }
-        else if(!interactiveOverlay)HideOverlayWindows();
         if(!registered)ReadShortcutFallback(game,window);
     }
     internal static bool OverlayRequested(string select,string dismissed,bool live){
