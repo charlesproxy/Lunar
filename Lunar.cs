@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 [assembly: System.Reflection.AssemblyTitle("Lunar")]
 [assembly: System.Reflection.AssemblyProduct("Lunar")]
-[assembly: System.Reflection.AssemblyFileVersion("1.80.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.81.0.0")]
 
 namespace Lunar {
 static class Json {
@@ -526,11 +526,11 @@ class Window:LunarForm,IMessageFilter {
     KeyValuePair<Control,NavButton> activePage;
     bool isPreview;DateTime statsHold=DateTime.MinValue;
     TrackerSurface surface;bool busy;
-    Panel updateNotice;
+    UpdateReadyCard updateNotice;
     Action restartForUpdate;
-    Label languageTitle,languageDescription,languageHelp,hotkeyTitle,hotkeyCurrent,hotkeyHelp,versionFooter,updateReadyLabel;
+    Label languageTitle,languageDescription,languageHelp,hotkeyTitle,hotkeyCurrent,hotkeyHelp,versionFooter;
     SoftSelect languageSelect;
-    Button updateNowButton,changeHotkeyButton;
+    Button changeHotkeyButton;
     string diagnostics="Waiting for data.";
     readonly Timer timer=new Timer();readonly BackgroundWorker worker=new BackgroundWorker();readonly RiotReader reader=new RiotReader();
     public Window(bool preview=false){
@@ -557,7 +557,7 @@ class Window:LunarForm,IMessageFilter {
         crosshairNav=Navigation("Crosshair",LunarGlyph.Crosshair,346);crosshairNav.Click+=delegate{ShowCrosshair();};sidebar.Controls.Add(crosshairNav);
         settingsNav=Navigation("Settings",LunarGlyph.Settings,393);settingsNav.Click+=delegate{ShowSettings();};sidebar.Controls.Add(settingsNav);
         var bottom=new Panel{Dock=DockStyle.Bottom,Height=110};
-        versionFooter=new Label{Text="LUNAR   /   1.79",Dock=DockStyle.Bottom,Height=26,ForeColor=Palette.Muted,Font=new Font("Segoe UI",8)};bottom.Controls.Add(versionFooter);sidebar.Controls.Add(bottom);
+        versionFooter=new Label{Text="LUNAR   /   "+LunarUpdates.DisplayVersion,Dock=DockStyle.Bottom,Height=26,ForeColor=Palette.Muted,Font=new Font("Segoe UI",8)};bottom.Controls.Add(versionFooter);sidebar.Controls.Add(bottom);
         surface=new TrackerSurface{Dock=DockStyle.Fill,Profiles=liveProfiles};surface.PlayerClicked+=OpenHistory;
         home=new HistoryView{Dock=DockStyle.Fill,HomeMode=true};
         home.OpenPlayer+=OpenHistory;
@@ -579,10 +579,10 @@ class Window:LunarForm,IMessageFilter {
         Controls.Add(sidebar);
         updateNotice=BuildUpdateNotice();
         ApplyLanguage();
-        Resize+=delegate{if(updateNotice.Visible)updateNotice.Location=new Point(Math.Max(12,ClientSize.Width-updateNotice.Width-18),Math.Max(12,ClientSize.Height-updateNotice.Height-18));};
+        Resize+=delegate{if(updateNotice.Visible)updateNotice.Present(ClientSize,false);};
         Controls.Add(updateNotice);
         SwitchPage(true);
-        Activated+=delegate{if(updateNotice.Visible){updateNotice.Location=new Point(Math.Max(12,ClientSize.Width-updateNotice.Width-18),Math.Max(12,ClientSize.Height-updateNotice.Height-18));updateNotice.BringToFront();}};
+        Activated+=delegate{if(updateNotice.Visible)updateNotice.Present(ClientSize,false);};
         var discord=new DiscordToggle{Checked=true,Location=new Point(0,36),Size=new Size(162,37)};
         discord.Hint.SetBounds(0,1,162,30);
         bottom.Controls.Add(discord.Hint);
@@ -603,27 +603,16 @@ class Window:LunarForm,IMessageFilter {
         worker.RunWorkerCompleted+=delegate(object sender,RunWorkerCompletedEventArgs e){busy=false;if(IsDisposed||Disposing)return;var s=e.Error==null?(Snapshot)e.Result:new Snapshot{Status="Temporary connection issue",Delay=15000};ShowSnapshot(s);timer.Interval=s.Delay;timer.Start();};
         timer.Interval=5000;timer.Tick+=delegate{RefreshData();};if(!preview)Shown+=delegate{RefreshData();};FormClosed+=delegate{if(desktop!=null)desktop.Dispose();timer.Stop();timer.Dispose();statsTimer.Stop();statsTimer.Dispose();liveBatchTimer.Stop();liveBatchTimer.Dispose();statsCancel.Cancel();};
     }
-    Panel BuildUpdateNotice(){
-        var panel=new Panel{Size=new Size(276,62),BackColor=Palette.Panel,Visible=false,TabStop=false};
-        panel.Paint+=delegate(object sender,PaintEventArgs e){
-            var g=e.Graphics;g.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            using(var path=Skin.Round(new Rectangle(0,0,panel.Width-1,panel.Height-1),14))
-            using(var fill=new SolidBrush(Palette.Panel))
-            using(var outline=new Pen(Palette.Border)){g.FillPath(fill,path);g.DrawPath(outline,path);}
-        };
-        Action activate=delegate{if(restartForUpdate!=null)restartForUpdate();};
-        updateReadyLabel=new Label{Text="Update ready",Location=new Point(14,4),Size=new Size(126,52),ForeColor=Color.FromArgb(236,237,239),BackColor=Color.Transparent,Font=new Font("Segoe UI",9,FontStyle.Bold),TextAlign=ContentAlignment.MiddleLeft};
-        updateNowButton=new Button{Text="Update now",Location=new Point(150,13),Size=new Size(112,36),FlatStyle=FlatStyle.Flat,BackColor=Palette.Accent,ForeColor=Color.White,Font=new Font("Segoe UI",9,FontStyle.Bold),Cursor=Cursors.Hand};
-        updateNowButton.FlatAppearance.BorderSize=0;updateNowButton.Click+=delegate{activate();};
-        panel.Controls.Add(updateReadyLabel);panel.Controls.Add(updateNowButton);
-        panel.LocationChanged+=delegate{panel.BringToFront();};
-        return panel;
-    }    internal void ShowUpdateReady(Action restart){
+    UpdateReadyCard BuildUpdateNotice(){
+        var card=new UpdateReadyCard();
+        card.UpdateClicked+=delegate{if(restartForUpdate!=null)restartForUpdate();};
+        return card;
+    }
+    internal void ShowUpdateReady(Action restart,string version){
         restartForUpdate=restart;
         if(updateNotice==null||IsDisposed)return;
-        updateNotice.Location=new Point(Math.Max(12,ClientSize.Width-updateNotice.Width-18),Math.Max(12,ClientSize.Height-updateNotice.Height-18));
-        updateNotice.Visible=true;
-        updateNotice.BringToFront();
+        updateNotice.Version=version??"";
+        updateNotice.Present(ClientSize,true);
     }
     internal void HideUpdateReady(){if(updateNotice!=null)updateNotice.Visible=false;restartForUpdate=null;}
     protected override void OnHandleCreated(EventArgs e){
@@ -952,7 +941,7 @@ class Window:LunarForm,IMessageFilter {
         panel.Cards=new[]{
             new SettingsCard{Glyph=SettingsGlyph.Language,Title=languageTitle,Body=new[]{languageDescription},Action=languageSelect},
             new SettingsCard{Glyph=SettingsGlyph.Keyboard,Title=hotkeyTitle,Body=new[]{hotkeyHelp},Action=changeHotkeyButton,Keys=()=>desktop==null?HotkeyPreference.Current.Display:desktop.HotkeyDisplay},
-            new SettingsCard{Glyph=SettingsGlyph.Update,Title=updatesTitle,Body=new[]{languageHelp},Action=checkButton,Badge="1.79"}
+            new SettingsCard{Glyph=SettingsGlyph.Update,Title=updatesTitle,Body=new[]{languageHelp},Action=checkButton,Badge=LunarUpdates.DisplayVersion}
         };
         foreach(var card in panel.Cards){panel.Controls.Add(card.Title);foreach(var body in card.Body)panel.Controls.Add(body);panel.Controls.Add(card.Action);}
         panel.Controls.Add(hotkeyCurrent);
@@ -972,9 +961,8 @@ class Window:LunarForm,IMessageFilter {
         if(languageTitle!=null)languageTitle.Text=pt?"Idioma":"Language";
         if(languageDescription!=null)languageDescription.Text=pt?"Escolha o idioma usado pelo Lunar.":"Choose the language used by Lunar.";
         if(languageHelp!=null)languageHelp.Text=pt?"As atualizações são verificadas automaticamente. Quando houver uma, o botão Atualizar aparecerá no canto inferior direito.":"Updates are checked automatically. When ready, an Update button appears at the bottom right.";
-        if(versionFooter!=null)versionFooter.Text="LUNAR   /   1.79";
-        if(updateReadyLabel!=null)updateReadyLabel.Text=pt?"Atualização pronta":"Update ready";
-        if(updateNowButton!=null)updateNowButton.Text=pt?"Atualizar agora":"Update now";
+        if(versionFooter!=null)versionFooter.Text="LUNAR   /   "+LunarUpdates.DisplayVersion;
+        if(updateNotice!=null)updateNotice.Invalidate();
         if(hotkeyTitle!=null)hotkeyTitle.Text=pt?"Atalho da Partida ao vivo":"Live Match hotkey";
         if(hotkeyCurrent!=null)hotkeyCurrent.Text=(pt?"Atalho atual: ":"Current shortcut: ")+(desktop==null?HotkeyPreference.Current.Display:desktop.HotkeyDisplay);
         if(hotkeyHelp!=null)hotkeyHelp.Text=pt?"Altere o atalho que abre o painel da partida ao vivo.":"Change the shortcut used to open the live overlay.";
@@ -1085,6 +1073,15 @@ static class Program {
                     File.WriteAllText(Path.ChangeExtension(args[1],".txt"),"before="+a+" | after="+b2+" | wall="+wall.ToString("F2")+" | decoded_fps="+(total/wall).ToString("F1")+" | shown_fps="+((total-dropped)/wall).ToString("F1")+" | dropped="+dropped);}
                 catch(Exception e){File.WriteAllText(Path.ChangeExtension(args[1],".txt"),"before="+a+" | after="+b2+" | "+e.Message);}
                 using(var b=new Bitmap(form.Width,form.Height)){using(var g=Graphics.FromImage(b)){var hdc=g.GetHdc();try{PrintWindow(form.Handle,hdc,2);}finally{g.ReleaseHdc(hdc);}}b.Save(args[1]);}
+            }
+            return 0;
+        }
+        if(args.Length==2 && args[0]=="--render-update") {
+            using(var window=new Window(true)){
+                window.Show();window.ShowUpdateReady(delegate{},"1.81");
+                var stop=DateTime.UtcNow.AddSeconds(2.5);while(DateTime.UtcNow<stop){Application.DoEvents();System.Threading.Thread.Sleep(15);}
+                using(var b=new Bitmap(window.Width,window.Height)){using(var g=Graphics.FromImage(b)){var hdc=g.GetHdc();try{PrintWindow(window.Handle,hdc,2);}finally{g.ReleaseHdc(hdc);}}b.Save(args[1]);}
+                window.Close();
             }
             return 0;
         }

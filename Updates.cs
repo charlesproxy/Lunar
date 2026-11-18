@@ -25,6 +25,14 @@ static class LunarUpdates {
     static readonly string Root=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Lunar","updates");
     static readonly string InstalledExe=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Programs","Lunar","Lunar.exe");
     internal static Version CurrentVersion{get{return ReadVersion(Application.ExecutablePath);}}
+    internal static string DisplayVersion{get{return ReleaseVersion(CurrentVersion);}}
+    // Version of the executable staged in an update folder (for the Update ready card), or "" if unknown.
+    internal static string StagedVersion(string folder){
+        try{
+            foreach(var file in Directory.GetFiles(folder,"Lunar-*.exe"))return ReleaseVersion(ReadVersion(file));
+        }catch(Exception){}
+        return "";
+    }
     static Version ReadVersion(string path){return new Version(FileVersionInfo.GetVersionInfo(path).FileVersion);}
     static bool IsInstalled(string path){return String.Equals(path,InstalledExe,StringComparison.OrdinalIgnoreCase);}
     static RSACryptoServiceProvider Verifier(){

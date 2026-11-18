@@ -399,7 +399,7 @@ static class RiotStatsClient {
     if(!Guid.TryParse(card,out id)||id==Guid.Empty)return null;
     try {
         var request=(HttpWebRequest)WebRequest.Create("https://media.valorant-api.com/playercards/"+id+(icon?"/displayicon.png":"/wideart.png"));
-        request.UserAgent="Lunar/1.79";
+        request.UserAgent="Lunar/"+LunarUpdates.DisplayVersion;
         request.Accept="image/png,image/*;q=0.9,*/*;q=0.5";
         request.Timeout=6000;
         request.ReadWriteTimeout=6000;

@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -15,6 +16,41 @@ interface IVideoSurface {
     void Load(string html);
     void Toggle();
     event Action CloseRequested;
+    event Action<string> Message;   // other page messages, e.g. "vol:0.4:0"
+}
+
+// Remembers the skin video volume (0..1) and mute state across videos and app restarts.
+static class VideoVolumePreference {
+    static readonly string FilePath=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Lunar","video-volume.txt");
+    static double volume=1;static bool muted;
+    static VideoVolumePreference(){
+        try{
+            var parts=File.ReadAllText(FilePath).Trim().Split(':');double value;
+            if(parts.Length==2&&Double.TryParse(parts[0],NumberStyles.Float,CultureInfo.InvariantCulture,out value)){
+                volume=Math.Max(0,Math.Min(1,value));muted=parts[1]=="1";
+            }
+        }catch(IOException){}catch(UnauthorizedAccessException){}
+    }
+    public static double Volume{get{return volume;}}
+    public static bool Muted{get{return muted;}}
+    // Accepts "vol:<0..1>:<0|1>" from the player page; anything else is ignored.
+    public static void Apply(string message){
+        if(message==null||!message.StartsWith("vol:"))return;
+        var parts=message.Substring(4).Split(':');double value;
+        if(parts.Length!=2||!Double.TryParse(parts[0],NumberStyles.Float,CultureInfo.InvariantCulture,out value)||Double.IsNaN(value))return;
+        volume=Math.Max(0,Math.Min(1,value));muted=parts[1]=="1";
+        try{
+            Directory.CreateDirectory(Path.GetDirectoryName(FilePath));
+            File.WriteAllText(FilePath,volume.ToString("0.###",CultureInfo.InvariantCulture)+":"+(muted?"1":"0"));
+        }catch(IOException){}catch(UnauthorizedAccessException){}
+    }
+}
+
+// window.external bridge for the legacy IE engine (WebView2 uses postMessage instead).
+[System.Runtime.InteropServices.ComVisible(true)]
+public sealed class LegacyVideoBridge {
+    internal Action<string> Received;
+    public void Report(string message){if(Received!=null)Received(message);}
 }
 
 // The WebView2 managed DLLs and native loader are embedded in the EXE (so the single-file updater keeps working)
@@ -79,6 +115,7 @@ sealed class ModernVideoSurface:IVideoSurface {
     string pending;
     bool ready;
     public event Action CloseRequested;
+    public event Action<string> Message;
     public Control View{get{return view;}}
 
     public ModernVideoSurface(){
@@ -101,7 +138,8 @@ sealed class ModernVideoSurface:IVideoSurface {
             view.CoreWebView2.NewWindowRequested+=(s,e)=>e.Handled=true;
             view.CoreWebView2.WebMessageReceived+=(s,e)=>{
                 string message;try{message=e.TryGetWebMessageAsString();}catch(Exception){return;}
-                if(message=="close"&&CloseRequested!=null)CloseRequested();
+                if(message=="close"){if(CloseRequested!=null)CloseRequested();}
+                else if(Message!=null)Message(message);
             };
             ready=true;
             if(pending!=null){view.NavigateToString(pending);pending=null;}
@@ -114,7 +152,13 @@ sealed class ModernVideoSurface:IVideoSurface {
 sealed class LegacyVideoSurface:IVideoSurface {
     readonly WebBrowser browser=new WebBrowser{Dock=DockStyle.Fill,ScrollBarsEnabled=false,ScriptErrorsSuppressed=true,IsWebBrowserContextMenuEnabled=false,AllowWebBrowserDrop=false,WebBrowserShortcutsEnabled=false};
     public event Action CloseRequested{add{}remove{}}
+    public event Action<string> Message;
     public Control View{get{return browser;}}
+    public LegacyVideoSurface(){
+        var bridge=new LegacyVideoBridge();
+        bridge.Received=delegate(string message){if(Message!=null)Message(message);};
+        browser.ObjectForScripting=bridge;
+    }
     // Legacy engine: opt this EXE (HKCU, no admin) into IE11 mode + GPU rendering.
     static LegacyVideoSurface(){
         try{

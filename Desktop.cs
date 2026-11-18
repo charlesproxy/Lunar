@@ -257,6 +257,11 @@ sealed class DesktopIntegration:IDisposable {
     string pendingMatch="",dismissedMatch="";
     string activeMatch="";
     bool interactiveOverlay;
+    // Fullscreen mode: the overlay is shown topmost WITHOUT taking focus, so VALORANT keeps the foreground and is
+    // not minimized. If Windows still minimizes the game (true exclusive fullscreen), we stop trying this session.
+    bool passiveOverlay,fullscreenBlocked,fullscreenNoticeShown;
+    DateTime fullscreenShownAt=DateTime.MinValue;
+    IntPtr fullscreenGame;
     IntPtr interactiveGame;
     Rectangle overlayGame;
     Point overlayOffset;
@@ -319,7 +324,7 @@ sealed class DesktopIntegration:IDisposable {
             if(!token.IsCancellationRequested&&folder!=null){
                 pendingUpdate=folder;
                 installUpdate.Available=true;
-                main.ShowUpdateReady(delegate{ExitWithUpdate(true);});
+                main.ShowUpdateReady(delegate{ExitWithUpdate(true);},LunarUpdates.StagedVersion(folder));
             }
         }catch(Exception){}
         finally{checkingUpdate=false;}
@@ -393,9 +398,10 @@ sealed class DesktopIntegration:IDisposable {
         HideOverlayWindows();
     }
     void EndInteraction(){
-        bool restore=interactiveOverlay&&OverlayHasFocus()&&interactiveGame!=IntPtr.Zero;
+        bool restore=interactiveOverlay&&!passiveOverlay&&OverlayHasFocus()&&interactiveGame!=IntPtr.Zero;
         var gameWindow=interactiveGame;
         interactiveOverlay=false;
+        passiveOverlay=false;
         interactiveGame=IntPtr.Zero;
         if(restore)SetForegroundWindow(gameWindow);
     }
@@ -419,6 +425,13 @@ sealed class DesktopIntegration:IDisposable {
     void ToggleOverlay(Rectangle game,IntPtr gameWindow){
         if(selection.Visible&&interactiveOverlay){HideOverlay();return;}
         dismissedMatch="";
+        if(ExclusiveFullscreen()){
+            if(fullscreenBlocked){ShowFullscreenNotice();return;}
+            interactiveGame=gameWindow;
+            interactiveOverlay=true;passiveOverlay=true;
+            ShowPassive(game,gameWindow);
+            return;
+        }
         interactiveGame=gameWindow;
         interactiveOverlay=true;
         ShowOverlay(game);
@@ -443,6 +456,7 @@ sealed class DesktopIntegration:IDisposable {
     }
     static bool KeyDown(Keys key){return (GetAsyncKeyState((int)key)&0x8000)!=0;}
     [DllImport("user32.dll")] static extern bool IsIconic(IntPtr hwnd);
+    [DllImport("user32.dll")] static extern bool ShowWindowAsync(IntPtr hwnd,int command);
     [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
     [DllImport("shell32.dll")] static extern int SHQueryUserNotificationState(out int state);
     const int RunningExclusiveFullscreen=3; // QUNS_RUNNING_D3D_FULL_SCREEN
@@ -471,11 +485,42 @@ sealed class DesktopIntegration:IDisposable {
         try{return SHQueryUserNotificationState(out state)==0&&state==RunningExclusiveFullscreen;}
         catch(EntryPointNotFoundException){return false;}catch(DllNotFoundException){return false;}
     }
+    // Shows the overlay above a fullscreen game without activating it (the game keeps keyboard focus).
+    void ShowPassive(Rectangle game,IntPtr gameWindow){
+        bool wasVisible=selection.Visible;
+        ShowOverlay(game);
+        backdrop.Hide();
+        const uint NoSize=0x0001,NoMove=0x0002,NoActivate=0x0010,ShowWindow=0x0040;
+        SetWindowPos(selection.Handle,new IntPtr(-1),0,0,0,0,NoSize|NoMove|NoActivate|ShowWindow); // HWND_TOPMOST
+        if(!wasVisible){fullscreenShownAt=DateTime.UtcNow;fullscreenGame=gameWindow;}
+    }
+    // True exclusive fullscreen minimizes the game as soon as a topmost window appears: detect it once and stop.
+    bool FullscreenMinimizedGame(){
+        if(fullscreenGame==IntPtr.Zero||DateTime.UtcNow-fullscreenShownAt>TimeSpan.FromSeconds(4))return false;
+        if(!IsIconic(fullscreenGame))return false;
+        var game=fullscreenGame;
+        fullscreenBlocked=true;fullscreenGame=IntPtr.Zero;
+        selection.Hide();backdrop.Hide();
+        interactiveOverlay=false;passiveOverlay=false;interactiveGame=IntPtr.Zero;
+        try{ShowWindowAsync(game,9);SetForegroundWindow(game);}catch(Exception){} // SW_RESTORE: bring the game back
+        ShowFullscreenNotice();
+        return true;
+    }
+    void ShowFullscreenNotice(){
+        if(fullscreenNoticeShown)return;
+        fullscreenNoticeShown=true;
+        try{
+            tray.ShowBalloonTip(8000,"Lunar",LunarLanguage.Text(
+                "VALORANT is in exclusive Fullscreen, which hides the overlay. In VALORANT → Settings → Video, set Display Mode to Windowed Fullscreen.",
+                "O VALORANT está em Tela cheia exclusiva, que esconde o overlay. Em VALORANT → Configurações → Vídeo, mude o Modo de exibição para Tela cheia em janela."),ToolTipIcon.Info);
+        }catch(Exception){}
+    }
     void SyncOverlay(){
-        if(interactiveOverlay&&!OverlayHasFocus())HideOverlay();
+        if(interactiveOverlay&&!passiveOverlay&&!OverlayHasFocus())HideOverlay();
         var window=ShortcutWindow();
         var game=shortcutActive?ForegroundGame(window):Rectangle.Empty;
         if(game.IsEmpty){
+            FullscreenMinimizedGame();
             focusedGame=IntPtr.Zero;gameFocusedSince=DateTime.MaxValue;
             UnregisterShortcut();
             watchingFallback=false;
@@ -487,11 +532,14 @@ sealed class DesktopIntegration:IDisposable {
         RegisterShortcut();
         foreground.Interval=registered?350:40;
         if(registered)watchingFallback=false;
-        // Automatic agent-select popup: only after VALORANT has stayed focused for a moment, and never on top of
-        // exclusive fullscreen (a topmost window there minimizes the game). The hotkey still opens it on demand.
+        // Automatic agent-select popup: only after VALORANT has stayed focused for a moment. In fullscreen it is shown
+        // without taking focus; if that still minimizes the game, fullscreen popups are disabled for this session.
         bool settled=DateTime.UtcNow-gameFocusedSince>=TimeSpan.FromMilliseconds(800);
-        bool autoAllowed=interactiveOverlay||(settled&&!ExclusiveFullscreen());
-        if(autoAllowed&&OverlayRequested(pendingMatch,dismissedMatch,interactiveOverlay))ShowOverlay(game);
+        bool fullscreen=ExclusiveFullscreen();
+        bool autoAllowed=interactiveOverlay||(settled&&!(fullscreen&&fullscreenBlocked));
+        if(autoAllowed&&OverlayRequested(pendingMatch,dismissedMatch,interactiveOverlay)){
+            if(fullscreen||passiveOverlay)ShowPassive(game,window);else ShowOverlay(game);
+        }
         else if(!interactiveOverlay)HideOverlayWindows();
         if(!registered)ReadShortcutFallback(game,window);
     }

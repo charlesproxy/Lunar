@@ -1007,6 +1007,7 @@ sealed class SkinVideoForm:Form {
         var body=new Panel{Dock=DockStyle.Fill,BackColor=Palette.Panel,Padding=new Padding(Inset,0,Inset,0)};
         body.Controls.Add(surface.View);
         surface.CloseRequested+=delegate{if(IsHandleCreated)BeginInvoke((Action)Close);};
+        surface.Message+=VideoVolumePreference.Apply;
         Controls.Add(body);Controls.Add(footer);Controls.Add(header);
         KeyDown+=delegate(object s,KeyEventArgs e){
             if(e.KeyCode==Keys.Escape)Close();
@@ -1065,25 +1066,43 @@ video{position:absolute;left:0;top:0;width:100%;height:100%;background:#0d0f13}
 #track{flex:1;height:5px;margin:0 14px;border-radius:3px;background:rgba(255,255,255,.18);cursor:pointer;position:relative}
 #fill{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:3px;background:#b78ff6}
 #time{color:#e8e6f0;font-size:12px;font-weight:600;min-width:84px;text-align:right;margin-right:12px}
+#vol{width:84px;height:24px;margin-left:10px;position:relative;cursor:pointer;flex:none}
+#volbg{position:absolute;left:0;right:0;top:10px;height:4px;border-radius:2px;background:rgba(255,255,255,.18)}
+#volfill{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:2px;background:#b78ff6}
+#volknob{position:absolute;top:6px;width:12px;height:12px;margin-left:-6px;border-radius:6px;background:#e8e6f0}
+#volpct{color:#e8e6f0;font-size:11px;font-weight:600;width:34px;text-align:right;flex:none}
 #load{position:absolute;left:50%;top:50%;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;border:3px solid rgba(183,143,246,.25);border-top-color:#b78ff6;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 </style></head><body><div id='wrap'><video id='v' src='"+safe+@"' autoplay loop preload='auto'></video><div id='load'></div>
 <div id='bar'><div class='btn' id='play'><svg width='14' height='14' viewBox='0 0 14 14'><g id='ip'><rect x='2' y='1' width='3.4' height='12' rx='1' fill='#14161c'/><rect x='8.6' y='1' width='3.4' height='12' rx='1' fill='#14161c'/></g><path id='ipl' d='M3 1.5v11l9.5-5.5z' fill='#14161c' style='display:none'/></svg></div>
 <div id='track'><div id='fill'></div></div><div id='time'>0:00 / 0:00</div>
-<div class='btn' id='mute'><svg width='16' height='16' viewBox='0 0 16 16'><path d='M2 6h3l4-3v10l-4-3H2z' fill='#e8e6f0'/><path id='wave' d='M11 5.5c1.2 1.3 1.2 3.7 0 5' stroke='#e8e6f0' stroke-width='1.6' fill='none' stroke-linecap='round'/><path id='x' d='M11 6l4 4M15 6l-4 4' stroke='#e8e6f0' stroke-width='1.6' stroke-linecap='round' style='display:none'/></svg></div></div></div>
+<div class='btn' id='mute'><svg width='16' height='16' viewBox='0 0 16 16'><path d='M2 6h3l4-3v10l-4-3H2z' fill='#e8e6f0'/><path id='wave' d='M11 5.5c1.2 1.3 1.2 3.7 0 5' stroke='#e8e6f0' stroke-width='1.6' fill='none' stroke-linecap='round'/><path id='x' d='M11 6l4 4M15 6l-4 4' stroke='#e8e6f0' stroke-width='1.6' stroke-linecap='round' style='display:none'/></svg></div>
+<div id='vol' title='Volume'><div id='volbg'><div id='volfill'></div></div><div id='volknob'></div></div><div id='volpct'>100%</div></div></div>
 <script>
 var v=document.getElementById('v'),wrap=document.getElementById('wrap'),fill=document.getElementById('fill'),time=document.getElementById('time');
+var vol=document.getElementById('vol'),volfill=document.getElementById('volfill'),volknob=document.getElementById('volknob'),volpct=document.getElementById('volpct'),dragging=false;
+v.volume="+VideoVolumePreference.Volume.ToString("0.###",System.Globalization.CultureInfo.InvariantCulture)+@";v.muted="+(VideoVolumePreference.Muted?"true":"false")+@";
+function report(){var s='vol:'+v.volume+':'+(v.muted?1:0);try{if(window.chrome&&window.chrome.webview)window.chrome.webview.postMessage(s);else window.external.Report(s);}catch(e){}}
+function drawVol(){var p=v.muted?0:v.volume;volfill.style.width=(p*100)+'%';volknob.style.left=(p*100)+'%';volpct.innerHTML=Math.round(p*100)+'%';}
+function setVol(x){x=Math.max(0,Math.min(1,x));v.volume=x;v.muted=x===0;sync();if(!dragging)report();}
+function volAt(e){var r=vol.getBoundingClientRect();setVol((e.clientX-r.left)/r.width);}
+vol.onmousedown=function(e){e=e||window.event;dragging=true;volAt(e);if(e.preventDefault)e.preventDefault();return false;};
+document.onmousemove=function(e){if(dragging)volAt(e||window.event);};
+document.onmouseup=function(){if(dragging){dragging=false;report();}};
+function wheel(e){e=e||window.event;var d=e.deltaY||-e.wheelDelta||0;setVol((v.muted?0:v.volume)+(d<0?.05:-.05));if(e.preventDefault)e.preventDefault();return false;}
+vol.onwheel=wheel;vol.onmousewheel=wheel;volpct.onwheel=wheel;volpct.onmousewheel=wheel;
 function fmt(s){s=Math.max(0,Math.floor(s||0));return Math.floor(s/60)+':'+(s%60<10?'0':'')+(s%60);}
 function sync(){var p=v.paused;document.getElementById('ip').style.display=p?'none':'';document.getElementById('ipl').style.display=p?'':'none';wrap.className=p?'paused':'';
- var m=v.muted;document.getElementById('wave').style.display=m?'none':'';document.getElementById('x').style.display=m?'':'none';}
+ var m=v.muted||v.volume===0;document.getElementById('wave').style.display=m?'none':'';document.getElementById('x').style.display=m?'':'none';drawVol();}
 function lunarToggle(){if(v.paused)v.play();else v.pause();sync();}
 document.getElementById('play').onclick=lunarToggle;v.onclick=lunarToggle;
-document.getElementById('mute').onclick=function(){v.muted=!v.muted;sync();};
+document.getElementById('mute').onclick=function(){if(v.muted&&v.volume===0)v.volume=.5;v.muted=!v.muted;sync();report();};
 document.getElementById('track').onclick=function(e){var r=this.getBoundingClientRect();if(v.duration)v.currentTime=(e.clientX-r.left)/r.width*v.duration;};
 v.ontimeupdate=function(){if(v.duration){fill.style.width=(v.currentTime/v.duration*100)+'%';time.innerHTML=fmt(v.currentTime)+' / '+fmt(v.duration);}};
 v.onplaying=function(){document.getElementById('load').style.display='none';sync();};v.onwaiting=function(){document.getElementById('load').style.display='';};
 v.onpause=sync;v.onplay=sync;sync();
 document.onkeydown=function(e){e=e||window.event;var k=e.keyCode;if(k===32){lunarToggle();if(e.preventDefault)e.preventDefault();return false;}
+ if(k===38||k===40){setVol((v.muted?0:v.volume)+(k===38?.05:-.05));if(e.preventDefault)e.preventDefault();return false;}
  if(k===27&&window.chrome&&window.chrome.webview)window.chrome.webview.postMessage('close');};
 function lunarStats(){var q=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality():null;return (q?q.totalVideoFrames:-1)+','+(q?q.droppedVideoFrames:-1)+','+v.currentTime+','+v.videoWidth+'x'+v.videoHeight;}
 </script></body></html>");

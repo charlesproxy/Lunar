@@ -131,4 +131,123 @@ sealed class SettingsSurface:Panel {
         g.Restore(state);
     }
 }
+
+// Bottom-right "Update ready" card: download badge, version, gradient Update button, dismiss ×, slide-in.
+sealed class UpdateReadyCard:Control {
+    public event Action UpdateClicked;
+    public string Version="";
+    bool hoverButton,hoverClose,pressed;
+    int targetTop,slide;
+    readonly Timer animation=new Timer{Interval=15};
+    static readonly Color Glow=Color.FromArgb(183,143,246),Deep=Color.FromArgb(132,92,226);
+
+    public UpdateReadyCard(){
+        SetStyle(ControlStyles.UserPaint|ControlStyles.AllPaintingInWmPaint|ControlStyles.OptimizedDoubleBuffer|ControlStyles.ResizeRedraw,true);
+        Size=new Size(412,86);
+        BackColor=Palette.Bg;
+        Visible=false;TabStop=false;
+        Font=new Font("Segoe UI",9);
+        animation.Tick+=delegate{
+            slide=Math.Max(0,slide-3);
+            Top=targetTop+slide*slide/12;
+            if(slide==0)animation.Stop();
+        };
+    }
+    bool Pt{get{return LunarLanguage.Portuguese;}}
+    Rectangle ButtonBounds{get{return new Rectangle(Width-150,(Height-38)/2+4,132,38);}}
+    Rectangle CloseBounds{get{return new Rectangle(Width-26,8,16,16);}}
+
+    // Places the card at the bottom-right of its parent, sliding up from below the first time.
+    public void Present(Size client,bool animate){
+        targetTop=Math.Max(12,client.Height-Height-18);
+        Left=Math.Max(12,client.Width-Width-18);
+        if(animate&&!Visible){slide=24;Top=targetTop+slide*slide/12;Visible=true;BringToFront();animation.Start();}
+        else{if(!animation.Enabled)Top=targetTop;Visible=true;BringToFront();}
+        Invalidate();
+    }
+    protected override void OnSizeChanged(EventArgs e){
+        base.OnSizeChanged(e);
+        if(Width>40&&Height>40)using(var shape=Skin.Round(new Rectangle(0,0,Width,Height),18))Region=new Region(shape);
+    }
+    protected override void OnPaint(PaintEventArgs e){
+        var g=e.Graphics;
+        g.SmoothingMode=SmoothingMode.AntiAlias;
+        g.TextRenderingHint=System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+        var card=new Rectangle(0,0,Width-1,Height-1);
+        using(var shape=Skin.Round(card,18)){
+            using(var fill=new LinearGradientBrush(card,Color.FromArgb(46,37,66),Palette.Panel,LinearGradientMode.Horizontal))g.FillPath(fill,shape);
+            using(var edge=new LinearGradientBrush(card,Color.FromArgb(210,Glow),Color.FromArgb(70,Glow),LinearGradientMode.Horizontal))
+            using(var pen=new Pen(edge,1.2f))g.DrawPath(pen,shape);
+        }
+        // Soft glow behind the icon.
+        using(var glowPath=new GraphicsPath()){
+            glowPath.AddEllipse(-6,-10,92,106);
+            using(var glow=new PathGradientBrush(glowPath){CenterColor=Color.FromArgb(70,Glow),SurroundColors=new[]{Color.FromArgb(0,Glow)}})g.FillPath(glow,glowPath);
+        }
+        // Icon tile: arrow into a tray.
+        var tile=new Rectangle(18,(Height-46)/2,46,46);
+        using(var shape=Skin.Round(tile,13))
+        using(var fill=new LinearGradientBrush(tile,Glow,Deep,LinearGradientMode.ForwardDiagonal))g.FillPath(fill,shape);
+        using(var pen=new Pen(Color.White,2.2f){StartCap=LineCap.Round,EndCap=LineCap.Round,LineJoin=LineJoin.Round}){
+            float cx=tile.X+23,cy=tile.Y+21;
+            g.DrawLine(pen,cx,cy-10,cx,cy+5);
+            g.DrawLines(pen,new[]{new PointF(cx-6,cy-1),new PointF(cx,cy+5),new PointF(cx+6,cy-1)});
+            g.DrawLines(pen,new[]{new PointF(cx-10,cy+6),new PointF(cx-10,cy+11),new PointF(cx+10,cy+11),new PointF(cx+10,cy+6)});
+        }
+        // Badge, title, subtitle.
+        int x=tile.Right+14;
+        string badge=Pt?"ATUALIZAÇÃO PRONTA":"UPDATE READY";
+        using(var badgeFont=new Font("Segoe UI",7,FontStyle.Bold)){
+            var size=TextRenderer.MeasureText(g,badge,badgeFont,Size.Empty,TextFormatFlags.NoPadding);
+            var pill=new Rectangle(x,15,size.Width+18,19);
+            using(var shape=Skin.Round(pill,9))using(var fill=new SolidBrush(Color.FromArgb(70,Glow)))g.FillPath(fill,shape);
+            using(var dot=new SolidBrush(Color.FromArgb(120,230,180)))g.FillEllipse(dot,pill.X+7,pill.Y+7,5,5);
+            TextRenderer.DrawText(g,badge,badgeFont,new Rectangle(pill.X+14,pill.Y,pill.Width-14,pill.Height),Color.FromArgb(232,220,255),
+                TextFormatFlags.VerticalCenter|TextFormatFlags.Left|TextFormatFlags.NoPrefix);
+        }
+        int textWidth=ButtonBounds.X-x-8;
+        string title=Version==""?(Pt?"Nova versão do Lunar":"New Lunar version"):"Lunar "+Version;
+        using(var titleFont=new Font("Segoe UI",11,FontStyle.Bold))
+            TextRenderer.DrawText(g,title,titleFont,new Rectangle(x,36,textWidth,24),Palette.Text,TextFormatFlags.Left|TextFormatFlags.VerticalCenter|TextFormatFlags.EndEllipsis|TextFormatFlags.NoPrefix);
+        using(var subFont=new Font("Segoe UI",8))
+            TextRenderer.DrawText(g,Pt?"Reinicia sozinho em segundos":"Restarts by itself in seconds",subFont,new Rectangle(x,58,textWidth,18),Palette.Muted,
+                TextFormatFlags.Left|TextFormatFlags.VerticalCenter|TextFormatFlags.EndEllipsis|TextFormatFlags.NoPrefix);
+        // Gradient pill button.
+        var button=ButtonBounds;
+        if(pressed&&hoverButton)button.Offset(0,1);
+        Color from=hoverButton?Color.FromArgb(204,172,255):Glow,to=hoverButton?Color.FromArgb(152,112,240):Deep;
+        if(hoverButton){
+            var halo=Rectangle.Inflate(button,3,3);
+            using(var shape=Skin.Round(halo,21))using(var fill=new SolidBrush(Color.FromArgb(55,Glow)))g.FillPath(fill,shape);
+        }
+        using(var shape=Skin.Round(button,19))
+        using(var fill=new LinearGradientBrush(button,from,to,LinearGradientMode.Horizontal))g.FillPath(fill,shape);
+        using(var shine=new Pen(Color.FromArgb(70,255,255,255)))g.DrawLine(shine,button.X+16,button.Y+1,button.Right-16,button.Y+1);
+        using(var buttonFont=new Font("Segoe UI",9.5f,FontStyle.Bold))
+            TextRenderer.DrawText(g,Pt?"Atualizar agora":"Update now",buttonFont,button,Color.White,
+                TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);
+        // Dismiss ×.
+        var close=CloseBounds;
+        using(var pen=new Pen(hoverClose?Palette.Text:Color.FromArgb(120,Palette.Muted),1.5f){StartCap=LineCap.Round,EndCap=LineCap.Round}){
+            g.DrawLine(pen,close.X+4,close.Y+4,close.Right-4,close.Bottom-4);
+            g.DrawLine(pen,close.Right-4,close.Y+4,close.X+4,close.Bottom-4);
+        }
+    }
+    protected override void OnMouseMove(MouseEventArgs e){
+        base.OnMouseMove(e);
+        bool b=ButtonBounds.Contains(e.Location),c=CloseBounds.Contains(e.Location);
+        if(b!=hoverButton||c!=hoverClose){hoverButton=b;hoverClose=c;Cursor=b||c?Cursors.Hand:Cursors.Default;Invalidate();}
+    }
+    protected override void OnMouseLeave(EventArgs e){base.OnMouseLeave(e);hoverButton=hoverClose=pressed=false;Cursor=Cursors.Default;Invalidate();}
+    protected override void OnMouseDown(MouseEventArgs e){base.OnMouseDown(e);if(e.Button==MouseButtons.Left&&hoverButton){pressed=true;Invalidate();}}
+    protected override void OnMouseUp(MouseEventArgs e){
+        base.OnMouseUp(e);
+        bool click=pressed&&ButtonBounds.Contains(e.Location);
+        pressed=false;Invalidate();
+        if(e.Button!=MouseButtons.Left)return;
+        if(click&&UpdateClicked!=null)UpdateClicked();
+        else if(CloseBounds.Contains(e.Location))Visible=false; // tray "Install update" stays available
+    }
+    protected override void Dispose(bool disposing){if(disposing){animation.Dispose();Font.Dispose();}base.Dispose(disposing);}
+}
 }
