@@ -453,6 +453,7 @@ sealed class DesktopIntegration:IDisposable {
         if(!exit&&e.CloseReason==CloseReason.UserClosing){e.Cancel=true;HideMain();}
     }
     void HideMain(){main.Hide();}
+    internal void ShowWindow(){OpenMain();}
     void OpenMain(){
         CheckUpdatesSoon();
         main.Show();

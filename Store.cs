@@ -237,7 +237,7 @@ partial class RiotReader {
         get{Guid account;return Guid.TryParse(self,out account)?account:Guid.Empty;}
     }
     internal Guid IdentifyStoreAccount(out bool clientOpen){
-        clientOpen=HasProcess("RiotClientServices");
+        clientOpen=HasProcess("RiotClientServices")||HasProcess("Riot Client");
         if(!clientOpen)return Guid.Empty;
         try{
             if(!ConnectLocalClient())return Guid.Empty;

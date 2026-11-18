@@ -229,7 +229,7 @@ static class RiotStatsClient {
             string cookie=RiotSessionCookie.Value;
             if(String.IsNullOrWhiteSpace(cookie)){
                 var clientSession=new RiotReader().GetStatisticsSession();
-                if(clientSession==null)throw new RiotStatsException(401,"Sign in to Riot Client to search profiles. Lunar will reuse that session automatically.");
+                if(clientSession==null)throw new RiotStatsException(401,RiotReader.LastSessionProblem!=""?RiotReader.LastSessionProblem:"Sign in to Riot Client to search profiles. Lunar will reuse that session automatically.");
                 var fromClient=new Session{Access=clientSession.Access,Entitlement=clientSession.Entitlement,Version=clientSession.Version,Region=clientSession.Region,Shard=Shard(clientSession.Region),Cookie="",Expires=DateTime.UtcNow.AddMinutes(5)};
                 session=fromClient;Interlocked.Increment(ref sessionBuilds);return fromClient;
             }
@@ -344,7 +344,10 @@ static class RiotStatsClient {
         return profile;
     }
     static void AddError(PlayerProfile profile,RiotStatsException error,string section){
-        profile.Message+=section+": "+(error.Status==404?"Riot did not return data for this player.":error.Message)+" ";
+        string text=error.Status==404?"Riot did not return data for this player.":error.Message;
+        // Rank and history usually fail for the same reason: say it once, without a section prefix.
+        if(error.Status==401||error.Status==0){if(!profile.Message.Contains(text))profile.Message+=text+" ";}
+        else profile.Message+=section+": "+text+" ";
         if(error.Status==429){profile.Limited=true;profile.RetryAfter=error.RetryAfter;}
     }
     // RR gained/lost per competitive match, from Riot's competitive updates (match history itself has no RR).
