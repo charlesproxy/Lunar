@@ -1,0 +1,17 @@
+# Build products
+/*.exe
+/Output/
+/bin/
+/obj/
+
+# Local configuration
+*.key
+.env
+.env.*
+*.user
+/*.msi
+*.zip
+
+# Riot sessions (never package credentials)
+ssid.txt
+*.ssid
