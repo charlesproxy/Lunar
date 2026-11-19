@@ -6,9 +6,13 @@ A VALORANT companion for Windows: profiles, match history, live lobby, friends, 
 
 Join the Lunar Discord community: [discord.gg/hKuhHXHw9x](https://discord.gg/hKuhHXHw9x).
 
-## Note on name resolution
+## Building from source
 
-During agent select VALORANT hides the names of the players in the lobby and only exposes their internal IDs. Lunar turns those IDs into readable `Name#Tag` using the local, already signed-in Riot Client session, exactly as other trackers do. That specific call is **intentionally not included in this public source**: `Names.cs` ships here only as a stub (`Names.Public.cs`) that returns nothing, so an app built from this repository will show players without their names. The working implementation lives in a private file that is bundled only into the official Lunar release. This is deliberate, to avoid handing out a copy-paste tool for revealing hidden names, and the shipped binary is obfuscated so it cannot simply be decompiled back into that code. Lunar still only reads what the signed-in Riot Client already has access to; it never injects into the game.
+You can clone and build Lunar, and the app works almost completely: searching a profile by `Name#Tag`, ranks, peak, K/D, HS%, match history, MVPs, RR, the daily store, crosshairs, Discord presence, the Alt+T overlay and duo detection all work.
+
+**One feature is intentionally left out of this public source.** During agent select VALORANT hides the names of the players in the lobby and only exposes their internal IDs. Lunar turns those IDs into `Name#Tag` using the local, already signed-in Riot Client session, exactly as other trackers do. That specific call is **not included here**: `Names.Public.cs` ships as a stub that returns nothing. So a build made from this repository runs fine, but in **agent select and the live match** players appear as "Name unavailable" instead of their names.
+
+The working implementation lives in a private file (`Names.Private.cs`) that is bundled only into the official Lunar release, and that release binary is obfuscated so it cannot simply be decompiled back into that code. This is deliberate — the goal is that nobody can take the public source and produce an app that reveals hidden names. Lunar only ever reads what the signed-in Riot Client already has access to; it never injects into the game.
 
 ## Build and test
 
