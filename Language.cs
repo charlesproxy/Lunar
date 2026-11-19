@@ -9,11 +9,6 @@ using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
 namespace Lunar {
-// Multi-language support.
-// English is the source language used in the code. Translations live in embedded assets/translations*.json:
-//   { "languages": ["pt-BR","es-ES",...], "strings": { "English text": ["Português","Español",...], ... } }
-// Keys may contain {0}, {1}… placeholders ("{0} matches") that match numbers, names, ranks, etc. at runtime.
-// Translate() accepts text in ANY supported language, so control texts can switch between languages freely.
 static class LunarLanguage {
     public sealed class Option {public string Code,Name;}
     sealed class Pattern {public Regex Match;public string[] Templates;public int Literal;}
@@ -24,12 +19,9 @@ static class LunarLanguage {
         {"it-IT","Italiano"},{"tr-TR","Türkçe"},{"ru-RU","Русский"},{"pl-PL","Polski"}
     };
     public static readonly Option[] Options;
-    // English -> translations, indexed like Options (index 0 = English, always the key itself).
     static readonly Dictionary<string,string[]> Table=new Dictionary<string,string[]>(StringComparer.Ordinal);
-    // Any translated text -> English key.
     static readonly Dictionary<string,string> Reverse=new Dictionary<string,string>(StringComparer.Ordinal);
     static readonly List<Pattern> Patterns=new List<Pattern>();
-    // Strong separators first (lines, " · "), then sentences inside each piece.
     static readonly Regex Separator=new Regex(@"(\s+·\s+|\r?\n)",RegexOptions.Compiled);
     static readonly Regex Sentence=new Regex(@"((?<=[.!?…])\s+(?=\S))",RegexOptions.Compiled);
     static readonly Dictionary<string,string> Cache=new Dictionary<string,string>(StringComparer.Ordinal);
@@ -66,7 +58,6 @@ static class LunarLanguage {
             if(row.Key.Contains("{0}")){AddPattern(values);continue;}
             for(int i=1;i<values.Length;i++)if(values[i]!=row.Key&&!Reverse.ContainsKey(values[i])&&!Table.ContainsKey(values[i]))Reverse[values[i]]=row.Key;
         }
-        // Longer literal text first, so "{0} matches in the current filter" wins over "{0} matches".
         Patterns.Sort((a,b)=>b.Literal.CompareTo(a.Literal));
         current=Load();
     }
@@ -99,7 +90,6 @@ static class LunarLanguage {
         catch(IOException){}catch(UnauthorizedAccessException){}
         if(Changed!=null)Changed();
     }
-    // Translation into a given language without changing (or saving) the user's choice. Used by checks.
     internal static string TranslateFor(int index,string text){
         lock(Gate){
             int saved=current;current=index;Cache.Clear();
@@ -115,13 +105,11 @@ static class LunarLanguage {
         for(int i=0;i<Options.Length;i++){
             Console.WriteLine("== "+Options[i].Code+" ("+Options[i].Name+")");
             foreach(var sample in samples)Console.WriteLine("  "+sample.Replace("\r\n"," / ")+"  =>  "+TranslateFor(i,sample).Replace("\r\n"," / "));
-            // Round trip: a translated text must translate back to English.
             foreach(var sample in samples){string there=TranslateFor(i,sample),back=TranslateFor(0,there);if(back!=sample&&i>0){Console.WriteLine("  ROUND TRIP: "+sample+" -> "+there+" -> "+back);failures++;}}
         }
         Console.WriteLine(Table.Count+" strings, "+Patterns.Count+" patterns, "+Options.Length+" languages, "+failures+" round-trip differences");
         return 0;
     }
-    // Picks the English text; kept for older call sites that also pass Portuguese.
     public static string Text(string english,string brazilian){return Translate(english);}
     public static string Format(string english,params object[] args){return String.Format(Translate(english),args);}
 
@@ -139,7 +127,6 @@ static class LunarLanguage {
     static string TranslateSegments(string text){
         return Split(text,Separator,true)??text;
     }
-    // Composite text: "Ascent  ·  In match", multi-line text, "Partial results. Retrying automatically."…
     static string Split(string text,Regex separator,bool allowSentences){
         string whole=TranslateOne(text,0);
         if(whole!=null)return whole;
@@ -149,20 +136,18 @@ static class LunarLanguage {
         bool changed=false;
         for(int i=0;i<parts.Length;i++){
             string part=parts[i];
-            if(i%2==1||part.Trim().Length==0){builder.Append(part);continue;} // odd indexes are the captured separators
+            if(i%2==1||part.Trim().Length==0){builder.Append(part);continue;}
             string translated=allowSentences?Split(part,Sentence,false):TranslateOne(part,0);
             if(translated!=null){builder.Append(translated);changed=true;}
             else builder.Append(part);
         }
         return changed?builder.ToString():null;
     }
-    // Returns null when nothing matched.
     static string TranslateOne(string text,int depth){
         string[] row;
         if(Table.TryGetValue(text,out row))return row[current];
         string english;
         if(Reverse.TryGetValue(text,out english))return Table[english][current];
-        // Keep surrounding spaces/punctuation used by concatenated UI text: " · recent match", "Level ".
         string trimmed=text.Trim();
         if(trimmed.Length!=text.Length&&trimmed.Length>0){
             string inner=TranslateOne(trimmed,depth);
@@ -185,7 +170,6 @@ static class LunarLanguage {
         return null;
     }
 
-    // Keeps every control's text in the selected language, including texts the code sets later.
     sealed class Watch {public bool Busy;}
     static readonly ConditionalWeakTable<Control,Watch> Watched=new ConditionalWeakTable<Control,Watch>();
     public static void Attach(Control root){
@@ -220,7 +204,6 @@ static class LunarLanguage {
     }
 }
 
-// Drop-in for TextRenderer.DrawText that translates the text first.
 static class LunarText {
     public static void DrawText(IDeviceContext dc,string text,Font font,Rectangle bounds,Color color,TextFormatFlags flags){TextRenderer.DrawText(dc,LunarLanguage.Translate(text),font,bounds,color,flags);}
     public static void DrawText(IDeviceContext dc,string text,Font font,Rectangle bounds,Color color){TextRenderer.DrawText(dc,LunarLanguage.Translate(text),font,bounds,color);}

@@ -115,7 +115,6 @@ static class TrackArt {
         }finally{g.Restore(state);}
     }
     public static void CoverWithFade(Graphics g,Image image,Rectangle bounds,Color background,float fadeStart,int rightShade){
-        // Cover the full clipped surface so the art and the solid color never meet at a hard edge.
         Cover(g,image,bounds,.045f);
         using(var shade=new LinearGradientBrush(Rectangle.Inflate(bounds,2,0),background,background,0f)){
             shade.WrapMode=WrapMode.TileFlipXY;
@@ -127,7 +126,6 @@ static class TrackArt {
         }
         FadeArtEdge(g,new Rectangle(bounds.X,bounds.Y,bounds.Width,8),background,false);
         FadeArtEdge(g,new Rectangle(bounds.X,bounds.Bottom-5,bounds.Width,5),background,true);
-        // The image's outermost pixels survive the fades as a light hairline; cover them with the panel colour.
         using(var edge=new SolidBrush(background)){
             g.FillRectangle(edge,bounds.X,bounds.Y,bounds.Width,2);
             g.FillRectangle(edge,bounds.X,bounds.Bottom-1,bounds.Width,1);
@@ -135,7 +133,6 @@ static class TrackArt {
     }
     static void FadeArtEdge(Graphics g,Rectangle strip,Color background,bool bottom){
         var transparent=Color.FromArgb(0,background);
-        // Brush slightly larger than the strip, flip-wrapped: GDI+ otherwise repeats one line of the start colour.
         using(var brush=new LinearGradientBrush(Rectangle.Inflate(strip,0,1),bottom?transparent:background,bottom?background:transparent,90f)){
             brush.WrapMode=WrapMode.TileFlipXY;
             g.FillRectangle(brush,strip);
@@ -170,7 +167,6 @@ static class TrackArt {
         if(!mapTiles.TryGetValue(tileKey,out tile)){
             var map=MapImage(key);
             if(map==null&&!String.IsNullOrEmpty(key)){
-                // Art still downloading: paint without caching so the real map appears once it arrives.
                 var pending=g.Save();
                 g.TranslateTransform(bounds.X,bounds.Y);
                 PaintMapTile(g,null,new Rectangle(Point.Empty,bounds.Size),accent,thumbnail);
@@ -198,7 +194,7 @@ static class TrackArt {
             g.SetClip(shape,System.Drawing.Drawing2D.CombineMode.Intersect);
             using(var fill=new SolidBrush(Palette.Panel))g.FillRectangle(fill,bounds);
             if(map!=null){
-                var art=bounds; // art fills the whole rounded tile: no 1px frame above the map
+                var art=bounds;
                 var background=Palette.Panel;
                 if(thumbnail){
                     Cover(g,map,art,.045f);
@@ -210,7 +206,6 @@ static class TrackArt {
                 }else CoverWithFade(g,map,art,background,.27f,174);
             }
             if(!thumbnail&&bounds.Width>40){
-                // Soft glow of the result colour from the left edge.
                 var glow=new Rectangle(bounds.X,bounds.Y,Math.Max(2,bounds.Width*42/100),bounds.Height);
                 using(var tint=new LinearGradientBrush(Rectangle.Inflate(glow,2,0),Color.FromArgb(52,accent),Color.FromArgb(0,accent),0f)){
                     tint.WrapMode=WrapMode.TileFlipXY;
@@ -220,8 +215,6 @@ static class TrackArt {
             using(var stripe=new SolidBrush(accent))g.FillRectangle(stripe,bounds.X,bounds.Y,thumbnail?4:5,bounds.Height);
         }
         g.Restore(state);
-        // The scaled map art bleeds one pixel past the rounded clip on the top edge, which showed as a light hairline.
-        // Paint that row (between the rounded corners) with the panel colour so the tile edge blends in.
         var row=g.Save();
         g.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.None;
         using(var edge=new SolidBrush(Palette.Panel))g.FillRectangle(edge,bounds.X+7,bounds.Y,Math.Max(0,bounds.Width-14),1);
@@ -282,7 +275,6 @@ static class AgentArt {
     static readonly Font QuestionFont=new Font("Segoe UI",11,FontStyle.Bold);
     public static void Draw(Graphics g,string id,Rectangle r){
         Guid parsed;
-        // No agent picked yet (agent select): a "?" tile instead of an empty square.
         if(String.IsNullOrEmpty(id)||(Guid.TryParse(id,out parsed)&&parsed==Guid.Empty)){
             if(r.Width<=0||r.Height<=0)return;
             var smooth=g.SmoothingMode;g.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
@@ -867,7 +859,6 @@ class ProfileCanvas:Control {
         DashboardCard(g,rank);
         Section(g,"Competitive rank",rank);
         RankArt.Draw(g,Profile.Tier,new Rectangle(x+14,y+55,55,55));
-        // "Radiant · last known rank": big rank name, the qualifier goes small next to the RR so nothing is cut.
         string label=Profile.RankLabel??"",note="";
         int split=label.IndexOf(" · ",StringComparison.Ordinal);
         if(split>0){note=label.Substring(split+3);label=label.Substring(0,split);}
@@ -958,8 +949,6 @@ class ProfileCanvas:Control {
         T(g,score,12,accent,new Rectangle(scoreX,row.Y+7,row.Width/5,25),true);
         int columnWidth=row.X+row.Width*56/100-scoreX-8;
         int pillWidth=ResultPill(g,match,accent,new Point(scoreX,row.Y+33),columnWidth);
-        // MVP badge always on the result line: right of the result when there is room, otherwise to its LEFT in the
-        // free space after "Competitive · 18:04"; only as a last resort next to the score or as a star.
         if(match.Mvp!=MvpKind.None){
             int queueEnd;using(var small=new Font("Segoe UI",8))queueEnd=mapX+LunarText.MeasureText(g,match.Queue+" · "+match.Started.ToString("HH:mm"),small,Size.Empty,CanvasText).Width;
             int leftRoom=scoreX-6-(queueEnd+10);
@@ -975,9 +964,7 @@ class ProfileCanvas:Control {
         MatchMetric(g,row,87,StatsMetrics.F(stats.HasScore&&stats.Rounds>0?(double?)stats.Score/stats.Rounds:null),"ACS");
         hits.Add(new KeyValuePair<Rectangle,MatchRow>(new Rectangle(row.X,row.Y-scroll,row.Width,row.Height),match));
     }
-    // Filled result badge (WIN / LOSS / DRAW) plus the RR change, so the outcome reads at a glance.
     static readonly Font PillFont=new Font("Segoe UI",7.5f,FontStyle.Bold);
-    // Text drawn inside the scrolling canvas must keep its translate transform and clip (scroll offset).
     const TextFormatFlags CanvasText=TextFormatFlags.NoPrefix|TextFormatFlags.NoPadding|TextFormatFlags.PreserveGraphicsClipping|TextFormatFlags.PreserveGraphicsTranslateTransform;
     static Color Lighter(Color c,int by){return Color.FromArgb(Math.Min(255,c.R+by),Math.Min(255,c.G+by),Math.Min(255,c.B+by));}
     static void Pill(Graphics g,Rectangle pill,string text,Color fillColor,Color edgeColor,Color textColor){
@@ -988,7 +975,6 @@ class ProfileCanvas:Control {
         g.SmoothingMode=smooth;
         LunarText.DrawText(g,text,PillFont,pill,textColor,CanvasText|TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);
     }
-    // Filled result badge with the RR change inside: "WIN · +18 RR", "LOSS · -16 RR", "DRAW".
     static int ResultPill(Graphics g,MatchRow match,Color accent,Point origin,int maxWidth){
         string label=match.Result==Outcome.Win?"WIN":match.Result==Outcome.Loss?"LOSS":match.Result==Outcome.Draw?"DRAW":"No result";
         if(match.RRChange.HasValue)label+=" · "+match.RRChange.Value.ToString("+0;-0;0")+" RR";
@@ -997,9 +983,7 @@ class ProfileCanvas:Control {
         Pill(g,pill,label,Color.FromArgb(match.Result==Outcome.Draw?70:62,accent),Color.FromArgb(160,accent),Lighter(accent,34));
         return pill.Width;
     }
-    // ★ MVP (gold) or ★ TEAM MVP (silver) next to the score.
     static readonly Color MvpGold=Color.FromArgb(246,201,92),MvpSilver=Color.FromArgb(196,204,218);
-    // Badge whose RIGHT edge is at 'right' (placed just left of the result pill).
     static bool MvpBadgeRight(Graphics g,MatchRow match,int right,int y,int room){
         bool gold=match.Mvp==MvpKind.Match;
         foreach(var text in new[]{"★ "+LunarLanguage.Translate(gold?"MATCH MVP":"TEAM MVP"),"★ MVP"}){
@@ -1011,13 +995,11 @@ class ProfileCanvas:Control {
         }
         return false;
     }
-    // Returns false when the badge does not fit in maxWidth (the caller then tries another spot).
     static bool MvpBadge(Graphics g,MatchRow match,Point origin,int maxWidth,bool starOnly){
         if(match.Mvp==MvpKind.None)return true;
         bool gold=match.Mvp==MvpKind.Match;
         string label="★ "+LunarLanguage.Translate(gold?"MATCH MVP":"TEAM MVP");
         var size=LunarText.MeasureText(g,label,PillFont,Size.Empty,CanvasText);
-        // Not enough room before the K/D/A column: short "★ MVP" (gold = match, silver = team).
         if(size.Width+16>maxWidth){label="★ MVP";size=LunarText.MeasureText(g,label,PillFont,Size.Empty,CanvasText);}
         if(starOnly){label="★";size=LunarText.MeasureText(g,label,PillFont,Size.Empty,CanvasText);}
         else if(size.Width+16>maxWidth)return false;

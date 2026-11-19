@@ -6,6 +6,10 @@ A VALORANT companion for Windows: profiles, match history, live lobby, friends, 
 
 Join the Lunar Discord community: [discord.gg/hKuhHXHw9x](https://discord.gg/hKuhHXHw9x).
 
+## Note on name resolution
+
+During agent select VALORANT hides the names of the players in the lobby and only exposes their internal IDs. Lunar turns those IDs into readable `Name#Tag` using the local, already signed-in Riot Client session, exactly as other trackers do. That specific call is **intentionally not included in this public source**: `Names.cs` ships here only as a stub (`Names.Public.cs`) that returns nothing, so an app built from this repository will show players without their names. The working implementation lives in a private file that is bundled only into the official Lunar release. This is deliberate, to avoid handing out a copy-paste tool for revealing hidden names, and the shipped binary is obfuscated so it cannot simply be decompiled back into that code. Lunar still only reads what the signed-in Riot Client already has access to; it never injects into the game.
+
 ## Build and test
 
 Run `powershell -ExecutionPolicy Bypass -File .\build.ps1` from this folder. The executable is `Lunar-1.79.exe` in this same folder. Run `Lunar-1.79.exe --self-test` for offline checks. Source changes and test executables are maintained directly in this Lunar folder.
@@ -22,7 +26,7 @@ Player lookup uses the aliases API; ranks use MMR; history and scoreboards use m
 
 Offline tests do not verify whether a particular Riot session or server permits live requests. A valid session is required for that check. Assets and client version metadata come from Valorant-API. Crosshair credits are in `assets/crosshairs.json`.
 
-Profile loading requests ten recent competitive matches and rank concurrently. Extra history is loaded on demand. Individual unavailable matches retain placeholders without discarding successful records. Archive paging stops on the provider total or a short final page. A history 404 falls back to competitive updates; the UI identifies this limited source. Scoreboard names are fetched in one batch from Riot name-service when opening a match and cached in memory. Empty or inaccessible Riot data cannot be reconstructed by the client.
+Profile loading requests ten recent competitive matches and rank concurrently. Extra history is loaded on demand. Individual unavailable matches retain placeholders without discarding successful records. Archive paging stops on the provider total or a short final page. A history 404 falls back to competitive updates; the UI identifies this limited source. Scoreboard names are resolved in one batch when opening a match and cached in memory (see the note on name resolution above). Empty or inaccessible Riot data cannot be reconstructed by the client.
 
 Account levels appear in the profile header, Live Match list and Alt+T overlay. Live identity levels take precedence. When absent, the latest available match level is used and the profile labels it as recent-match data. Numbers returned by Riot are displayed even when the in-game level display flag is hidden. When neither the live response nor recent matches provides a number, an em dash is displayed; values are never fabricated.
 

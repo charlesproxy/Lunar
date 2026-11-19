@@ -34,7 +34,6 @@ static class LunarIcons {
                     graphics.DrawEllipse(pen,16,18,2,2);
                     break;
                 case LunarGlyph.Settings:{
-                    // Gear: 8 rounded teeth around a ring, hollow hub.
                     const int teeth=8;
                     var outline=new List<PointF>();
                     for(int i=0;i<teeth;i++){
@@ -295,9 +294,6 @@ partial class RiotReader {
  public static Player ParseLookup(object result,string name,string tag){
   foreach(var item in Json.A(result)){string id=Json.S(item,"puuid");Guid parsed;if(!Guid.TryParse(id,out parsed))continue;string n=Json.S(item,"game_name"),t=Json.S(item,"tag_line");if(n!=""&&!String.Equals(n,name,StringComparison.OrdinalIgnoreCase))continue;if(t!=""&&!String.Equals(t,tag,StringComparison.OrdinalIgnoreCase))continue;return new Player{Id=id,Name=(n==""?name:n)+"#"+(t==""?tag:t)};}return null;
  }
- // Riot Client processes: "RiotClientServices", "RiotClientUx" and, since 2024, "Riot Client" (with a space).
- // A Riot Client started as administrator (or protected by Vanguard) denies access to Lunar: HasExited then throws
- // "access denied" although the process is running. Only "no such process" means it is really gone.
  public static bool ClientProcessAlive(int pid){
     try{
         using(var p=System.Diagnostics.Process.GetProcessById(pid)){
@@ -311,7 +307,6 @@ partial class RiotReader {
  internal static bool IsRiotClientName(string name){return (name??"").Replace(" ","").StartsWith("RiotClient",StringComparison.OrdinalIgnoreCase);}
  public static string LookupFailure(System.Net.WebExceptionStatus status){switch(status){case System.Net.WebExceptionStatus.ConnectFailure:return "Riot Client is not responding. Open it and sign in.";case System.Net.WebExceptionStatus.Timeout:return "Riot Client timed out. Wait for it to load and try again.";case System.Net.WebExceptionStatus.TrustFailure:case System.Net.WebExceptionStatus.SecureChannelFailure:return "Could not connect securely to Riot Client. Restart it and try again.";default:return "Riot Client request failed ("+status+"). Check that Riot Client is signed in.";}}
  public static void OpenClient(){OpenClient("");}
- // Opens VALORANT through Riot Client (signs in if needed).
  public static void OpenValorant(){OpenClient("--launch-product=valorant --launch-patchline=live");}
  public static void OpenClient(string arguments){string executable="";string manifest=System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),@"Riot Games\RiotClientInstalls.json");if(System.IO.File.Exists(manifest)){var data=Json.Codec.DeserializeObject(System.IO.File.ReadAllText(manifest));executable=Json.S(data,"rc_default");if(executable=="")executable=Json.S(data,"rc_live");}if(executable=="")executable=@"C:\Riot Games\Riot Client\RiotClientServices.exe";if(!System.IO.File.Exists(executable)||!String.Equals(System.IO.Path.GetFileName(executable),"RiotClientServices.exe",StringComparison.OrdinalIgnoreCase))throw new Exception("Riot Client installation not found. Open it from the Start menu.");System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(executable,arguments??""){UseShellExecute=true});}
  public Player Lookup(string input){

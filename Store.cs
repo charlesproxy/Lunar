@@ -35,7 +35,6 @@ sealed class StoreBalance {
     public StoreBalance(string code,long amount){Code=code;Amount=amount;}
 }
 static class StoreRarity {
-    // Edition comes from the Valorant-API skin catalog (cached on disk) instead of an embedded table.
     public static long Rank(string offerId){var info=SkinCatalog.Find(offerId);return info==null?-1:info.TierRank;}
     public static string Name(string offerId){var info=SkinCatalog.Find(offerId);return info==null||info.Tier==""?"":info.Tier+" Edition";}
     public static StoreOffer[] WithRarestFirst(IEnumerable<StoreOffer> offers){
@@ -487,7 +486,6 @@ sealed class StoreView:UserControl {
             LayoutCanvas();
         };
     }
-    // Sample rotation for `--render-store` screenshots (real skin ids, art from Valorant-API).
     internal bool DemoReady{get{return canvas.Data!=null&&canvas.Data.Offers.All(o=>o.Art!=null)&&ApiArt.Currency("VP")!=null&&ApiArt.Currency("KC")!=null&&ApiArt.Currency("RAD")!=null&&canvas.Data.Offers.All(o=>{var i=SkinCatalog.Find(o.Id);return i==null||ApiArt.ContentTier(i.TierId)!=null;});}}
     internal void ShowDemo(){
         clock.Enabled=false;
@@ -651,7 +649,6 @@ sealed class StoreCanvas:Control {
         };
         retry.Click+=delegate{retry.Text="Checking…";if(RetryRequested!=null)RetryRequested();};
     }
-    // What the empty store screen should say for a given status message.
     enum StoreProblem{Loading,ClientClosed,SignIn,Busy,Network,Other}
     static StoreProblem Classify(string message){
         string m=message??"";
@@ -664,7 +661,6 @@ sealed class StoreCanvas:Control {
     }
     public event Action LayoutChanged;
     public void ShowStatus(string message){int before=HeightForLayout();status=message;retry.Text="Try again";if(HeightForLayout()!=before&&LayoutChanged!=null)LayoutChanged();Invalidate();}
-    // While a problem is on screen, background retries keep it there instead of flashing "Loading…".
     public bool ShowingProblem{get{return Classify(status)!=StoreProblem.Loading;}}
     void PlaceButton(Control button,bool show,Point at){
         if(button.Visible!=show)button.Visible=show;
@@ -683,7 +679,6 @@ sealed class StoreCanvas:Control {
         ShowStatus(message);
     }
     public int HeightForLayout(){
-        // Empty state: card starts at 120 and is 276 px (372 with the step list) tall, plus a bottom margin.
         if(Data==null)return 120+(Classify(status)==StoreProblem.ClientClosed||Classify(status)==StoreProblem.SignIn?372:276)+40;
         int tiles=(Offers.Length+1)/2;
         int offerHeight=tiles==0?95:tiles*(TileHeight+Gap)-Gap;
@@ -736,7 +731,6 @@ sealed class StoreCanvas:Control {
                 y+=items.Length*34+14;
             }
             bool showOpen=kind==StoreProblem.ClientClosed||kind==StoreProblem.SignIn;
-            // Riot Client is already open and signed in for SignIn: the next step is the game itself.
             string openText=kind==StoreProblem.SignIn?"Open VALORANT":"Open Riot Client";
             if(openClient.Tag as string!=openText){openClient.Tag=openText;openClient.Text=LunarLanguage.Translate(openText);}
             bool showRetry=kind!=StoreProblem.Loading;
@@ -1014,7 +1008,6 @@ sealed class StoreCanvas:Control {
     }
 }
 
-// Plays the skin preview videos from Valorant-API (Riot CDN mp4) inside the app.
 sealed class SkinVideoForm:Form {
     readonly IVideoSurface surface=VideoSurfaces.Create();
     readonly FlowLayoutPanel variants=new FlowLayoutPanel{Dock=DockStyle.Fill,WrapContents=false,AutoScroll=false,BackColor=Palette.Panel,Padding=new Padding(0,14,0,0)};
@@ -1024,7 +1017,6 @@ sealed class SkinVideoForm:Form {
     string current;
     const int HeaderHeight=72,FooterHeight=66,Inset=18;
 
-    // Opens the player centered over the owner, with the owner dimmed behind it.
     public static void Open(IWin32Window ownerHandle,string title,SkinInfo info){
         var owner=ownerHandle as Form;
         using(var dim=new Form{FormBorderStyle=FormBorderStyle.None,ShowInTaskbar=false,StartPosition=FormStartPosition.Manual,BackColor=Color.Black,Opacity=.58})
@@ -1119,7 +1111,6 @@ sealed class SkinVideoForm:Form {
         current=url;
         foreach(var chip in chips)chip.Selected=chip.Url==url;
         string safe=System.Net.WebUtility.HtmlEncode(uri.AbsoluteUri);
-        // ES5 only: the embedded engine is IE11.
         surface.Load(@"<!doctype html><html><head><meta http-equiv='X-UA-Compatible' content='IE=edge'><style>
 html,body{margin:0;height:100%;background:#1d2128;overflow:hidden;font-family:'Segoe UI',sans-serif;-ms-user-select:none}
 #wrap{position:absolute;left:0;right:0;top:0;bottom:0;background:#0d0f13;border-radius:12px;overflow:hidden}
@@ -1174,7 +1165,6 @@ document.onkeydown=function(e){e=e||window.event;var k=e.keyCode;if(k===32){luna
 function lunarStats(){var q=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality():null;return (q?q.totalVideoFrames:-1)+','+(q?q.droppedVideoFrames:-1)+','+v.currentTime+','+v.videoWidth+'x'+v.videoHeight;}
 </script></body></html>");
     }
-    // Diagnostics: "total,dropped,currentTime,size" from the page's video element.
     internal string Stats(){var legacy=surface.View as WebBrowser;if(legacy==null)return "webview2";try{return Convert.ToString(legacy.Document.InvokeScript("lunarStats"));}catch(Exception e){return "error:"+e.Message;}}
     protected override void Dispose(bool disposing){
         if(disposing)surface.View.Dispose();
@@ -1182,7 +1172,6 @@ function lunarStats(){var q=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality(
     }
 }
 
-// Pill button for a video variant; chroma names (Red, Blue…) get a colored dot.
 sealed class VideoChip:Control {
     public readonly string Url;
     bool hover,selected;

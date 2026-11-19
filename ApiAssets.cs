@@ -13,9 +13,6 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace Lunar {
-// Game art (agents, ranks, maps, currencies, store) comes from valorant-api.com instead of being embedded in the EXE.
-// Images are downscaled once, cached on disk in %LOCALAPPDATA%\Lunar\cache, and kept small in memory.
-// Callers paint a placeholder while an image is missing; every open window repaints when it arrives.
 static class ApiArt {
     const string Media="https://media.valorant-api.com/";
     static readonly string Folder=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Lunar","cache","art");
@@ -42,7 +39,6 @@ static class ApiArt {
     public static Image ContentTier(string id){string g=Id(id);return g==null?null:Get(Media+"contenttiers/"+g+"/displayicon.png",32);}
     public static string AgentUrl(string id){string g=Id(id);return g==null?"":Media+"agents/"+g+"/displayicon.png";}
 
-    // Returns the cached image, or null while it downloads in the background.
     public static Image Get(string url,int maxSize){
         if(String.IsNullOrEmpty(url))return null;
         CaptureUi();
@@ -164,8 +160,6 @@ static class Http {
     }
 }
 
-// Compact skin index built from https://valorant-api.com/v1/weapons/skins and cached on disk for a few days.
-// Gives the store each level's skin name, edition (content tier) and preview videos.
 sealed class SkinVideo {public string Name,Url;}
 sealed class SkinInfo {
     public string Name,Weapon,TierId,Tier;
@@ -189,7 +183,6 @@ static class SkinCatalog {
         }
         return null;
     }
-    // Blocking; call from a background thread. Refreshes when the index is old or an offer is unknown.
     public static void Ensure(IEnumerable<string> levelIds){
         var ids=levelIds.Where(id=>!String.IsNullOrEmpty(id)).ToArray();
         lock(sync){
@@ -241,7 +234,6 @@ static class SkinCatalog {
          catch(ArgumentException){}
          catch(InvalidOperationException){}
     }
-    // "Skin Level 2\nPress inspect…" -> "Level 2"; "Skin Level 2\n(Variant 1 Red)" -> "Red"
     internal static string VideoLabel(string displayName,string skin){
         var lines=(displayName??"").Replace("\r","").Split('\n');
         string first=lines[0].Trim();

@@ -8,18 +8,14 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace Lunar {
-// Video surface for the skin preview player.
-// Preferred: WebView2 (Chromium, hardware decode, plays the 1080p60 Riot clips at 60 fps).
-// Fallback: the built-in WebBrowser (IE11 engine, ~30 fps) when the WebView2 runtime is missing.
 interface IVideoSurface {
     Control View{get;}
     void Load(string html);
     void Toggle();
     event Action CloseRequested;
-    event Action<string> Message;   // other page messages, e.g. "vol:0.4:0"
+    event Action<string> Message;
 }
 
-// Remembers the skin video volume (0..1) and mute state across videos and app restarts.
 static class VideoVolumePreference {
     static readonly string FilePath=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Lunar","video-volume.txt");
     static double volume=1;static bool muted;
@@ -33,7 +29,6 @@ static class VideoVolumePreference {
     }
     public static double Volume{get{return volume;}}
     public static bool Muted{get{return muted;}}
-    // Accepts "vol:<0..1>:<0|1>" from the player page; anything else is ignored.
     public static void Apply(string message){
         if(message==null||!message.StartsWith("vol:"))return;
         var parts=message.Substring(4).Split(':');double value;
@@ -46,15 +41,12 @@ static class VideoVolumePreference {
     }
 }
 
-// window.external bridge for the legacy IE engine (WebView2 uses postMessage instead).
 [System.Runtime.InteropServices.ComVisible(true)]
 public sealed class LegacyVideoBridge {
     internal Action<string> Received;
     public void Report(string message){if(Received!=null)Received(message);}
 }
 
-// The WebView2 managed DLLs and native loader are embedded in the EXE (so the single-file updater keeps working)
-// and extracted once to %LOCALAPPDATA%\Lunar\webview2\<version>.
 static class WebView2Host {
     const string Version="1.0.2903.40";
     static readonly string Folder=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Lunar","webview2",Version);
@@ -89,7 +81,6 @@ static class WebView2Host {
         string path=Path.Combine(Folder,name+".dll");
         return File.Exists(path)?Assembly.LoadFrom(path):null;
     }
-    // Kept in its own non-inlined method so WebView2 types are only touched after the resolver is registered.
     [MethodImpl(MethodImplOptions.NoInlining)]
     static bool Probe(){
         Microsoft.Web.WebView2.Core.CoreWebView2Environment.SetLoaderDllFolderPath(Folder);
@@ -159,7 +150,6 @@ sealed class LegacyVideoSurface:IVideoSurface {
         bridge.Received=delegate(string message){if(Message!=null)Message(message);};
         browser.ObjectForScripting=bridge;
     }
-    // Legacy engine: opt this EXE (HKCU, no admin) into IE11 mode + GPU rendering.
     static LegacyVideoSurface(){
         try{
             string exe=Path.GetFileName(Application.ExecutablePath);

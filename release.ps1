@@ -22,12 +22,13 @@ $source = [IO.File]::ReadAllText($lunarCs)
 $stamped = [regex]::Replace($source, 'AssemblyFileVersion\("[^"]*"\)', "AssemblyFileVersion(""$fileVersion"")")
 if ($stamped -ne $source) { [IO.File]::WriteAllText($lunarCs, $stamped, (New-Object Text.UTF8Encoding $false)) }
 
-# 2. Build and run the offline checks.
+# 2. Build, obfuscate the shipped executable, then run the offline checks against it.
 & (Join-Path $root 'build.ps1')
 $exe = Join-Path $root "Lunar-$release.exe"
 if (!(Test-Path -LiteralPath $exe)) { throw "Build did not produce $exe." }
+& (Join-Path $root 'obfuscate.ps1') -Exe $exe
 $test = Start-Process -FilePath $exe -ArgumentList '--self-test' -Wait -PassThru -NoNewWindow
-if ($test.ExitCode -ne 0) { throw 'Self-test failed; nothing was published.' }
+if ($test.ExitCode -ne 0) { throw 'Self-test failed on the obfuscated build; nothing was published.' }
 
 # 3. Sign the manifest and pack the executable in a zip.
 $output = Join-Path $root 'Output'

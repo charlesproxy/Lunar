@@ -7,7 +7,6 @@ using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace Lunar {
-// Taskbar attention for warnings: orange flash, a persistent yellow highlight, an amber "!" badge and a short chime.
 static class TaskbarAlert {
     [StructLayout(LayoutKind.Sequential)]
     struct FlashInfo {public uint Size;public IntPtr Window;public uint Flags,Count,Timeout;}
@@ -28,7 +27,7 @@ static class TaskbarAlert {
     }
     [ComImport,Guid("56FDF344-FD6D-11d0-958A-006097C9A090"),ClassInterface(ClassInterfaceType.None)]
     class TaskbarList {}
-    const int ProgressNone=0,ProgressPaused=8; // "paused" progress is drawn yellow behind the taskbar button
+    const int ProgressNone=0,ProgressPaused=8;
 
     static ITaskbarList3 taskbar;
     static Icon badge;
@@ -39,8 +38,6 @@ static class TaskbarAlert {
     }
 
     public static bool Active{get{return active;}}
-    // Marks the window's taskbar button. A hidden (tray-only) window is shown minimized WITHOUT activation, so the
-    // fullscreen game keeps focus and still gets a taskbar button to highlight.
     public static void Raise(Form form,string description,bool sound){
         if(form==null||form.IsDisposed)return;
         try{
@@ -62,15 +59,12 @@ static class TaskbarAlert {
         }catch(Exception){}
         if(sound)Chime.Play();
     }
-    // The window was shown natively (without activation, so the game keeps focus). WinForms does not notice that,
-    // so record it as visible; otherwise a later Hide() (closing to the tray) would be ignored.
     static void MarkVisible(Form form){
         try{
             var setState=typeof(Control).GetMethod("SetState",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic,null,new[]{typeof(int),typeof(bool)},null);
-            if(setState!=null)setState.Invoke(form,new object[]{0x2,true}); // STATE_VISIBLE
+            if(setState!=null)setState.Invoke(form,new object[]{0x2,true});
         }catch(Exception){}
     }
-    // Test helper: restores the window the way a taskbar click does.
     internal static void ShowRestored(Form form){ShowWindow(form.Handle,9);form.Activate();}
     public static void Clear(Form form){
         if(!active||form==null||form.IsDisposed||!form.IsHandleCreated)return;
@@ -81,7 +75,6 @@ static class TaskbarAlert {
             if(list!=null){list.SetProgressState(form.Handle,ProgressNone);list.SetOverlayIcon(form.Handle,IntPtr.Zero,null);}
         }catch(Exception){}
     }
-    // 16×16 amber circle with a dark "!".
     static Icon Badge(){
         if(badge!=null)return badge;
         using(var bitmap=new Bitmap(16,16)){
@@ -98,7 +91,6 @@ static class TaskbarAlert {
     }
 }
 
-// Short two-note chime synthesized in memory (no sound files needed).
 static class Chime {
     static byte[] wave;
     public static void Play(){
@@ -110,7 +102,7 @@ static class Chime {
     }
     static byte[] Build(){
         const int rate=44100;
-        double[][] notes={new[]{987.77,0.0,0.16},new[]{1318.51,0.11,0.34}}; // B5 then E6: frequency, start, length (s)
+        double[][] notes={new[]{987.77,0.0,0.16},new[]{1318.51,0.11,0.34}};
         int samples=(int)(rate*0.48);
         var pcm=new short[samples];
         foreach(var note in notes){

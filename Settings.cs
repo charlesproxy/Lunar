@@ -12,12 +12,11 @@ sealed class SettingsCard {
     public Label Title;
     public Label[] Body;
     public Control Action;
-    public Func<string> Keys;   // optional: draws the current shortcut as keycaps
-    public string Badge;        // optional: small pill next to the title
+    public Func<string> Keys;
+    public string Badge;
     public Rectangle Bounds;
 }
 
-// Settings page: a header and one rounded card per preference (icon tile, title, description, control on the right).
 sealed class SettingsSurface:Panel {
     public SettingsCard[] Cards=new SettingsCard[0];
     const int Top0=124,CardHeight=104,CardGap=14,MaxWidth=860;
@@ -42,8 +41,6 @@ sealed class SettingsSurface:Panel {
             int by=blockTop+26;
             foreach(var body in card.Body){body.Location=new Point(textX,by);body.Width=textWidth;by+=body.Height;}
             card.Action.Location=new Point(card.Bounds.Right-24-actionWidth,card.Bounds.Y+(CardHeight-card.Action.Height)/2);
-            // Rounded controls clear their corners with this colour: use the card's colour where the control sits,
-            // otherwise the page background shows as dark corners around the button/dropdown.
             Color surface=CardColorAt(card.Bounds,card.Action.Left+card.Action.Width/2);
             var button=card.Action as SoftButton;if(button!=null){button.SurfaceColor=surface;button.Invalidate();}
             var select=card.Action as SoftSelect;if(select!=null){select.SurfaceColor=surface;select.Invalidate();}
@@ -51,7 +48,6 @@ sealed class SettingsSurface:Panel {
         }
         Invalidate();
     }
-    // Colour of the card gradient (faint accent over the page background → panel) at a given x.
     Color CardColorAt(Rectangle card,int x){
         var left=Blend(Palette.Accent,BackColor,14/255f);
         float t=card.Width<=0?1f:Math.Max(0f,Math.Min(1f,(x-card.X)/(float)card.Width));
@@ -154,7 +150,6 @@ sealed class SettingsSurface:Panel {
     }
 }
 
-// Bottom-right "Update ready" card: download badge, version, gradient Update button, dismiss ×, slide-in.
 sealed class UpdateReadyCard:Control {
     public event Action UpdateClicked;
     public string Version="";
@@ -178,7 +173,6 @@ sealed class UpdateReadyCard:Control {
     Rectangle ButtonBounds{get{return new Rectangle(Width-150,(Height-38)/2+4,132,38);}}
     Rectangle CloseBounds{get{return new Rectangle(Width-26,8,16,16);}}
 
-    // Places the card at the bottom-right of its parent, sliding up from below the first time.
     public void Present(Size client,bool animate){
         targetTop=Math.Max(12,client.Height-Height-18);
         Left=Math.Max(12,client.Width-Width-18);
@@ -200,12 +194,10 @@ sealed class UpdateReadyCard:Control {
             using(var edge=new LinearGradientBrush(card,Color.FromArgb(210,Glow),Color.FromArgb(70,Glow),LinearGradientMode.Horizontal))
             using(var pen=new Pen(edge,1.2f))g.DrawPath(pen,shape);
         }
-        // Soft glow behind the icon.
         using(var glowPath=new GraphicsPath()){
             glowPath.AddEllipse(-6,-10,92,106);
             using(var glow=new PathGradientBrush(glowPath){CenterColor=Color.FromArgb(70,Glow),SurroundColors=new[]{Color.FromArgb(0,Glow)}})g.FillPath(glow,glowPath);
         }
-        // Icon tile: arrow into a tray.
         var tile=new Rectangle(18,(Height-46)/2,46,46);
         using(var shape=Skin.Round(tile,13))
         using(var fill=new LinearGradientBrush(tile,Glow,Deep,LinearGradientMode.ForwardDiagonal))g.FillPath(fill,shape);
@@ -215,7 +207,6 @@ sealed class UpdateReadyCard:Control {
             g.DrawLines(pen,new[]{new PointF(cx-6,cy-1),new PointF(cx,cy+5),new PointF(cx+6,cy-1)});
             g.DrawLines(pen,new[]{new PointF(cx-10,cy+6),new PointF(cx-10,cy+11),new PointF(cx+10,cy+11),new PointF(cx+10,cy+6)});
         }
-        // Badge, title, subtitle.
         int x=tile.Right+14;
         string badge=LunarLanguage.Translate("UPDATE READY");
         using(var badgeFont=new Font("Segoe UI",7,FontStyle.Bold)){
@@ -233,7 +224,6 @@ sealed class UpdateReadyCard:Control {
         using(var subFont=new Font("Segoe UI",8))
             LunarText.DrawText(g,"Restarts by itself in seconds",subFont,new Rectangle(x,58,textWidth,18),Palette.Muted,
                 TextFormatFlags.Left|TextFormatFlags.VerticalCenter|TextFormatFlags.EndEllipsis|TextFormatFlags.NoPrefix);
-        // Gradient pill button.
         var button=ButtonBounds;
         if(pressed&&hoverButton)button.Offset(0,1);
         Color from=hoverButton?Color.FromArgb(204,172,255):Glow,to=hoverButton?Color.FromArgb(152,112,240):Deep;
@@ -247,7 +237,6 @@ sealed class UpdateReadyCard:Control {
         using(var buttonFont=new Font("Segoe UI",9.5f,FontStyle.Bold))
             LunarText.DrawText(g,"Update now",buttonFont,button,Color.White,
                 TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);
-        // Dismiss ×.
         var close=CloseBounds;
         using(var pen=new Pen(hoverClose?Palette.Text:Color.FromArgb(120,Palette.Muted),1.5f){StartCap=LineCap.Round,EndCap=LineCap.Round}){
             g.DrawLine(pen,close.X+4,close.Y+4,close.Right-4,close.Bottom-4);
@@ -267,12 +256,11 @@ sealed class UpdateReadyCard:Control {
         pressed=false;Invalidate();
         if(e.Button!=MouseButtons.Left)return;
         if(click&&UpdateClicked!=null)UpdateClicked();
-        else if(CloseBounds.Contains(e.Location))Visible=false; // tray "Install update" stays available
+        else if(CloseBounds.Contains(e.Location))Visible=false;
     }
     protected override void Dispose(bool disposing){if(disposing){animation.Dispose();Font.Dispose();}base.Dispose(disposing);}
 }
 
-// Bottom-right warning: the overlay could not open because VALORANT is in exclusive Fullscreen.
 sealed class FullscreenNoticeCard:Control {
     static readonly string OffPath=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Lunar","fullscreen-notice.txt");
     static readonly Color Amber=Color.FromArgb(245,190,95),AmberDeep=Color.FromArgb(214,140,52);
@@ -302,7 +290,6 @@ sealed class FullscreenNoticeCard:Control {
             using(var edge=new LinearGradientBrush(card,Color.FromArgb(200,Amber),Color.FromArgb(60,Amber),LinearGradientMode.Horizontal))
             using(var pen=new Pen(edge,1.2f))g.DrawPath(pen,shape);
         }
-        // Warning tile.
         var tile=new Rectangle(18,18,42,42);
         using(var shape=Skin.Round(tile,12))using(var fill=new LinearGradientBrush(tile,Amber,AmberDeep,LinearGradientMode.ForwardDiagonal))g.FillPath(fill,shape);
         using(var pen=new Pen(Color.FromArgb(40,26,10),2.4f){StartCap=LineCap.Round,EndCap=LineCap.Round}){

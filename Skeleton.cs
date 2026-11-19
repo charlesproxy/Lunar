@@ -4,8 +4,6 @@ using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
 namespace Lunar {
-// Skeleton loading for the profile page: the real layout (header, tabs, filters, rank, agents, stats, matches)
-// drawn as placeholder blocks with a soft shimmer sweeping across, instead of a spinner on an empty page.
 sealed class ProfileSkeleton:Panel {
     readonly Timer tick=new Timer{Interval=33};
     float phase;
@@ -26,7 +24,6 @@ sealed class ProfileSkeleton:Panel {
         int w=ClientSize.Width,h=ClientSize.Height;
         if(w<300)return;
         using(var region=new GraphicsPath()){
-            // Header card
             var header=new Rectangle(22,12,w-44,134);
             CardShape(g,header);
             Bar(region,header.X+22,header.Y+30,110,12);
@@ -34,7 +31,6 @@ sealed class ProfileSkeleton:Panel {
             Bar(region,header.X+22,header.Y+100,80,12);
             Bar(region,header.Right-130,header.Y+40,90,12);
             Bar(region,header.Right-130,header.Y+62,70,34);
-            // Tabs + filters strip
             using(var strip=new SolidBrush(Palette.Sidebar))g.FillRectangle(strip,0,158,w,98);
             for(int i=0;i<4;i++)Bar(region,24+i*114,166,100,30,8);
             for(int i=0;i<4;i++)Bar(region,24+i*180,212,170,36,8);
@@ -42,7 +38,6 @@ sealed class ProfileSkeleton:Panel {
             Bar(region,24,top,260,10);
             top+=24;
             int left=24,leftWidth=Math.Min(244,(w-72)/3),rightX=left+leftWidth+16,rightWidth=w-rightX-24;
-            // Left column: rank, agents, maps
             var rank=new Rectangle(left,top,leftWidth,164);CardShape(g,rank);
             Bar(region,rank.X+18,rank.Y+18,130,14);
             Circle(region,rank.X+20,rank.Y+54,46);
@@ -51,7 +46,6 @@ sealed class ProfileSkeleton:Panel {
             var agents=new Rectangle(left,rank.Bottom+14,leftWidth,150);CardShape(g,agents);
             Bar(region,agents.X+18,agents.Y+18,100,14);
             for(int i=0;i<2;i++){int y=agents.Y+52+i*48;Circle(region,agents.X+16,y,32);Bar(region,agents.X+58,y+3,80,12);Bar(region,agents.X+58,y+20,60,9);Bar(region,agents.Right-70,y+3,52,12);}
-            // Right column: summary tiles + recent matches
             if(rightWidth>200){
                 var summary=new Rectangle(rightX,top,rightWidth,220);CardShape(g,summary);
                 Bar(region,summary.X+20,summary.Y+18,190,14);
@@ -69,7 +63,6 @@ sealed class ProfileSkeleton:Panel {
                 }
             }
             using(var fill=new SolidBrush(Block))g.FillPath(fill,region);
-            // Shimmer: a soft diagonal highlight clipped to the placeholder blocks.
             float sweep=(phase-0.3f)*w*1.4f;
             var band=new RectangleF(sweep-w*0.25f,0,w*0.5f,h);
             if(band.Right>0&&band.Left<w){

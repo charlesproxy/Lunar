@@ -68,7 +68,7 @@ partial class RiotReader {
     Player GetSelfPlayer(){
         if(cachedSelf!=null&&cachedSelf.Id==self)return cachedSelf;
         var me=new Player{Id=self,Name="Your profile",State="YOU",Region=region};
-        try{var response=Request("https://pd."+shard+".a.pvp.net/name-service/v2/players","PUT",new[]{self},false,false);var entry=Json.A(response).FirstOrDefault(x=>Json.S(x,"Subject")==self);if(Json.S(entry,"GameName")!=""){me.Name=Json.S(entry,"GameName")+"#"+Json.S(entry,"TagLine");cachedSelf=me;}}
+        try{var map=RiotNames.Resolve(new[]{self},(path,body)=>Request("https://pd."+shard+".a.pvp.net"+path,"PUT",body,false,false));string full;if(map.TryGetValue(self,out full)){me.Name=full;cachedSelf=me;}}
         catch(ApiFailure e){if(e.Code==429)throw;}catch(WebException){}
         return me;
     }
@@ -143,7 +143,7 @@ partial class RiotReader {
         catch(Exception) { return new Snapshot {Status="Unexpected client response",Detail="The service may have changed its response format.",Delay=15000}; }
         finally { basic=access=entitlement=null; }
     }
-    bool tracing; // log every step (only for profile/tracker session checks, not the 3-second live poll)
+    bool tracing;
     void Trace(string message){if(tracing)LunarLog.Write("session",message);}
     static string ProcessNameOf(int pid){try{using(var p=Process.GetProcessById(pid)){try{return p.ProcessName;}catch(Exception e){return "(running, access denied: "+e.GetType().Name+")";}}}catch(ArgumentException){return "(not running)";}catch(Exception e){return "(unknown: "+e.GetType().Name+")";}}
     Snapshot InitializeSession(bool requireGame=true,bool fetchCurrentVersion=false) {
@@ -157,8 +157,6 @@ partial class RiotReader {
         bool pidOk=Int32.TryParse(lf[1],out clientPid);
         Trace("lockfile process: "+(pidOk?ProcessNameOf(clientPid):"(no pid)")+" · running Riot processes: "+String.Join(", ",Process.GetProcesses().Select(p=>{try{return p.ProcessName;}catch(Exception){return "";}}).Where(n=>n.IndexOf("riot",StringComparison.OrdinalIgnoreCase)>=0||n.IndexOf("valorant",StringComparison.OrdinalIgnoreCase)>=0).Distinct()));
         if(fetchCurrentVersion&&(!pidOk||!ClientProcessAlive(clientPid))){
-            // The lockfile PID can't be confirmed, but if Riot Client services are running the port may still be valid:
-            // try it — the entitlement request below tells whether the session really works.
             if(HasProcess("RiotClientServices")||HasProcess("Riot Client"))Trace("lockfile PID not confirmed, but Riot Client is running → trying its port");
             else{Trace("Riot Client process not running → 'Waiting for Riot Client'");return new Snapshot {Status="Waiting for Riot Client"};}
         }
@@ -193,7 +191,6 @@ partial class RiotReader {
             return new Snapshot {Status="Waiting for Riot Client sign-in"};
         return null;
     }
-    // Riot Client regions ("BR", "LA1", "EUW", "OC1"…) mapped to VALORANT deployments.
     internal static string RegionFromClient(string region,string webRegion){
         foreach(var raw in new[]{region,webRegion}){
             string r=(raw??"").Trim().ToLowerInvariant();
@@ -208,7 +205,6 @@ partial class RiotReader {
         }
         return "";
     }
-    // Why the Riot Client session could not be used (shown instead of a generic "sign in" message).
     internal static string LastSessionProblem="";
     internal RiotStatisticsSession GetStatisticsSession(){
         tracing=true;
@@ -271,12 +267,9 @@ partial class RiotReader {
         }
         if(missing.Length>0) {
             try {
-                var result=Request("https://pd."+shard+".a.pvp.net/name-service/v2/players","PUT",missing,false,false);
-                remoteStatus="OK; records="+Json.A(result).Count();
-                foreach(var n in Json.A(result)) {
-                    string subject=Json.S(n,"Subject"),name=Json.S(n,"GameName"),tag=Json.S(n,"TagLine");
-                    if(missing.Contains(subject) && name!="") names[subject]=name+(tag==""?"":"#"+tag);
-                }
+                var resolved=RiotNames.Resolve(missing,(path,body)=>Request("https://pd."+shard+".a.pvp.net"+path,"PUT",body,false,false));
+                foreach(var pair in resolved) if(missing.Contains(pair.Key)) names[pair.Key]=pair.Value;
+                remoteStatus="OK; records="+resolved.Count;
             } catch(ApiFailure e) { remoteStatus="HTTP "+e.Code; if(e.Code==429) snap.Delay=60000; }
               catch(WebException) { remoteStatus="connection failed"; }
               catch(ArgumentException) { remoteStatus="invalid response"; }
@@ -331,7 +324,6 @@ partial class RiotReader {
         var s=new Snapshot {Status=pregame?"AGENT SELECT":"IN MATCH"};
         if(pregame) {
             object ally=Json.Get(data,"AllyTeam"),enemy=Json.Get(data,"EnemyTeam");
-            // Never classify teams by array position. The user's ID must anchor a fallback.
             if(ally==null) ally=Json.A(Json.Get(data,"Teams")).FirstOrDefault(t=>Json.A(Json.Get(t,"Players")).Any(p=>Json.S(p,"Subject")==self));
             s.Team=Json.S(ally,"TeamID");
             s.Allies=Players(Json.Get(ally,"Players"),s.Team,self);
@@ -363,7 +355,6 @@ partial class RiotReader {
 }
 static class Palette {
     public static readonly Color Bg=Color.FromArgb(19,22,28),Sidebar=Color.FromArgb(15,18,23),Panel=Color.FromArgb(29,33,40),Raised=Color.FromArgb(36,40,48),Border=Color.FromArgb(53,59,69),Text=Color.FromArgb(239,241,244),Muted=Color.FromArgb(158,164,174),Accent=Color.FromArgb(183,143,246),AccentSoft=Color.FromArgb(53,43,68),Cyan=Color.FromArgb(198,170,255),Green=Color.FromArgb(73,190,157),Red=Color.FromArgb(183,143,246);
-    // Match results: easy to tell apart at a glance (win green, loss red, draw grey).
     public static readonly Color Win=Color.FromArgb(67,205,150),Loss=Color.FromArgb(240,86,106),Draw=Color.FromArgb(176,182,194);
     public static Color ForRate(double? rate){return !rate.HasValue?Muted:rate.Value>50.0001?Win:rate.Value<49.9999?Loss:Draw;}
 }
@@ -455,7 +446,6 @@ class TrackerSurface:Control {
         string enemySide=side=="Defense"?"Attack":side=="Attack"?"Defense":"";
         Team(g,new Rectangle(x,80+sectionH,w,sectionH),"Enemy team",Data.Enemies,enemySide,side=="Defense"?Palette.Red:Color.FromArgb(94,158,215),parties);
     }
-    // Amber strip at the bottom of the live board while VALORANT runs in exclusive Fullscreen.
     void DrawWarning(Graphics g,Rectangle r){
         var smooth=g.SmoothingMode;g.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
         using(var shape=Skin.Round(r,10))
@@ -649,14 +639,11 @@ class Window:LunarForm,IMessageFilter {
     }
     int NoticeOffset{get{return updateNotice!=null&&updateNotice.Visible?updateNotice.Height+12:0;}}
     void PlaceFullscreenNotice(){fullscreenNotice.Present(ClientSize,NoticeOffset);}
-    // Explains a missed overlay (exclusive Fullscreen). Stacks above the Update ready card when both are shown.
     internal void ShowFullscreenNotice(){
         if(IsDisposed||FullscreenNoticeCard.Disabled)return;
         PlaceFullscreenNotice();
     }
     DateTime lastAlertSound=DateTime.MinValue;
-    // Sound + yellow taskbar highlight when the overlay could not appear (exclusive Fullscreen). Cleared when the
-    // notice card is closed.
     internal void AlertFullscreen(){
         if(IsDisposed||FullscreenNoticeCard.Disabled)return;
         bool sound=DateTime.UtcNow-lastAlertSound>TimeSpan.FromSeconds(4);
@@ -699,8 +686,6 @@ class Window:LunarForm,IMessageFilter {
         foreach(var button in new[]{homeNav,liveNav,friendsNav,trackerNav,storeNav,crosshairNav,settingsNav})button.Active=button==active;
     }
     internal DesktopIntegration Desktop{get{return desktop;}}
-    // Started with Windows (--tray): live in the tray without opening the window. The handle is still created
-    // so the hotkey, overlay and polling work exactly as when the window is open.
     public bool StartHidden;
     protected override void SetVisibleCore(bool value){
         if(StartHidden){
@@ -968,7 +953,7 @@ class Window:LunarForm,IMessageFilter {
             s.Allies[i].AgentId=i%2==0?"add6443a-41bd-e414-f6ad-e58d267f4e95":"320b2a48-4d9b-a075-30f1-1f93a9b638fa";
             s.Enemies[i].AgentId=i%2==0?"320b2a48-4d9b-a075-30f1-1f93a9b638fa":"add6443a-41bd-e414-f6ad-e58d267f4e95";
         }
-        s.Allies[0].PartyId=s.Allies[1].PartyId="demo-party-1";s.Allies[4].AgentId=""; // still choosing an agent
+        s.Allies[0].PartyId=s.Allies[1].PartyId="demo-party-1";s.Allies[4].AgentId="";
         s.Enemies[2].PartyId=s.Enemies[3].PartyId="demo-party-2";
         PopulateDemo(s);s.Self=s.Allies[0];ShowSnapshot(s);surface.Updated="PREVIEW · sample data";
     }
@@ -1028,7 +1013,6 @@ class Window:LunarForm,IMessageFilter {
     }
     static bool SavePreviewHotkey(Keys key,Keys modifiers){if(!HotkeyPreference.Valid(key,modifiers))return false;HotkeyPreference.Save(new HotkeyBinding{Key=key,Modifiers=modifiers});return true;}
     void ApplyLanguage(){
-        // Texts are set in English; LunarLanguage.Attach translates every control (and later changes) automatically.
         if(versionFooter!=null)versionFooter.Text="LUNAR   /   "+LunarUpdates.DisplayVersion;
         if(hotkeyCurrent!=null)hotkeyCurrent.Text="Current shortcut: "+(desktop==null?HotkeyPreference.Current.Display:desktop.HotkeyDisplay);
         LunarLanguage.Attach(this);
@@ -1093,8 +1077,8 @@ class Window:LunarForm,IMessageFilter {
     public void RenderTab(string path,int tab){SwitchPage(true);home.ActivateTab(tab);home.Refresh();Application.DoEvents();using(var b=new Bitmap(Width,Height)){DrawToBitmap(b,new Rectangle(0,0,b.Width,b.Height));b.Save(path);}}
     public void RenderDetail(string path){home.RenderMatch(path);}
     [DllImport("user32.dll")] static extern bool PrintWindow(IntPtr hwnd,IntPtr hdc,uint flags);
-    public void RenderOverlay(string path,bool agentSelect=false){
-        var s=current;
+    public void RenderOverlay(string path,bool agentSelect=false,string selfName=null,bool radiant=false){
+        var s=current;if(selfName!=null)s.Allies[0].Name=selfName;PlayerProfile top;if(radiant&&profiles.TryGetValue(s.Allies[0].Id,out top)){top.Tier=27;top.PeakTier=27;top.RR=512;top.PeakRR=512;top.RankLabel=RankArt.Name(27);}
         if(!agentSelect){s.Status="IN MATCH";s.Match="demo-match";s.AllyScore=7;s.EnemyScore=5;s.Allies[4].AgentId="add6443a-41bd-e414-f6ad-e58d267f4e95";}
         using(var overlay=new AgentSelectOverlay(profiles)){
             overlay.Apply(s);overlay.StartPosition=FormStartPosition.Manual;overlay.Location=new Point(-3000,-3000);
@@ -1191,7 +1175,6 @@ static class Program {
             return 0;
         }
         if(args.Length==2 && args[0]=="--render-toggle") {
-            // Frames of the Discord switch animation (off -> on), scaled up for review.
             int frames=9;
             using(var b=new Bitmap(frames*60,40)){using(var g=Graphics.FromImage(b)){g.Clear(TrayMenuRenderer.Surface);
                 for(int i=0;i<frames;i++){double p=i/(double)(frames-1);
@@ -1200,7 +1183,6 @@ static class Program {
             return 0;
         }
         if(args.Length==2 && args[0]=="--test-backdrop") {
-            // Focused full-screen backdrop: the taskbar must stay hidden behind it.
             using(var backdrop=new OverlayBackdrop()){
                 Action<double> pump=seconds=>{var stop=DateTime.UtcNow.AddSeconds(seconds);while(DateTime.UtcNow<stop){Application.DoEvents();System.Threading.Thread.Sleep(15);}};
                 var screen=Screen.PrimaryScreen.Bounds;
@@ -1213,12 +1195,12 @@ static class Program {
         if(args.Length==2 && args[0]=="--test-alert") {
             using(var window=new Window(true)){
                 Action<double> pump=seconds=>{var stop=DateTime.UtcNow.AddSeconds(seconds);while(DateTime.UtcNow<stop){Application.DoEvents();System.Threading.Thread.Sleep(15);}};
-                window.Show();pump(1);window.Hide();pump(.5); // like Lunar sitting in the tray during a game
+                window.Show();pump(1);window.Hide();pump(.5);
                 window.AlertFullscreen();pump(2);
                 var screen=Screen.PrimaryScreen.Bounds;
                 using(var b=new Bitmap(screen.Width,screen.Height)){using(var g=Graphics.FromImage(b))g.CopyFromScreen(screen.Location,Point.Empty,screen.Size);b.Save(args[1]);}
                 Console.WriteLine("after alert: visible="+window.Visible+" state="+window.WindowState+" alert="+TaskbarAlert.Active);
-                TaskbarAlert.ShowRestored(window);pump(1.5); // what clicking the taskbar button does
+                TaskbarAlert.ShowRestored(window);pump(1.5);
                 Console.WriteLine("after click: visible="+window.Visible+" state="+window.WindowState+" bounds="+window.Bounds);
                 window.Hide();pump(.5);
                 Console.WriteLine("after close-to-tray: visible="+window.Visible+" nativeVisible="+IsWindowVisible(window.Handle));
@@ -1237,14 +1219,13 @@ static class Program {
             }
             return 0;
         }
-        if(args.Length==2 && args[0].StartsWith("--render")) {
-            using(var window=new Window(true)) { if(args[0]!="--render")window.Demo();if(args[0]=="--render-small")window.Size=window.MinimumSize;window.Show();Application.DoEvents();{var warm=DateTime.UtcNow.AddSeconds(6);while(DateTime.UtcNow<warm){Application.DoEvents();System.Threading.Thread.Sleep(40);}}if(args[0]=="--render-tracker"){window.ShowTracker();Application.DoEvents();using(var b=new Bitmap(window.Width,window.Height)){window.DrawToBitmap(b,new Rectangle(0,0,b.Width,b.Height));b.Save(args[1]);}}else if(args[0]=="--render-history")window.RenderHistory(args[1]);else if(args[0]=="--render-matches")window.RenderTab(args[1],1);else if(args[0]=="--render-agents")window.RenderTab(args[1],2);else if(args[0]=="--render-maps")window.RenderTab(args[1],3);else if(args[0]=="--render-detail")window.RenderDetail(args[1]);else if(args[0]=="--render-store")window.RenderStore(args[1]);else if(args[0]=="--render-settings")window.RenderSettings(args[1]);else if(args[0]=="--render-fullscreen")window.RenderFullscreen(args[1]);else if(args[0]=="--render-overlay")window.RenderOverlay(args[1]);else if(args[0]=="--render-select")window.RenderOverlay(args[1],true);else using(var bitmap=new Bitmap(window.Width,window.Height)) {window.DrawToBitmap(bitmap,new Rectangle(0,0,bitmap.Width,bitmap.Height));bitmap.Save(args[1]);}window.Close();}return 0;
+        if((args.Length==2||args.Length==3&&args[0]=="--render-select") && args[0].StartsWith("--render")) {
+            using(var window=new Window(true)) { if(args[0]!="--render")window.Demo();if(args[0]=="--render-small")window.Size=window.MinimumSize;window.Show();Application.DoEvents();{var warm=DateTime.UtcNow.AddSeconds(6);while(DateTime.UtcNow<warm){Application.DoEvents();System.Threading.Thread.Sleep(40);}}if(args[0]=="--render-tracker"){window.ShowTracker();Application.DoEvents();using(var b=new Bitmap(window.Width,window.Height)){window.DrawToBitmap(b,new Rectangle(0,0,b.Width,b.Height));b.Save(args[1]);}}else if(args[0]=="--render-history")window.RenderHistory(args[1]);else if(args[0]=="--render-matches")window.RenderTab(args[1],1);else if(args[0]=="--render-agents")window.RenderTab(args[1],2);else if(args[0]=="--render-maps")window.RenderTab(args[1],3);else if(args[0]=="--render-detail")window.RenderDetail(args[1]);else if(args[0]=="--render-store")window.RenderStore(args[1]);else if(args[0]=="--render-settings")window.RenderSettings(args[1]);else if(args[0]=="--render-fullscreen")window.RenderFullscreen(args[1]);else if(args[0]=="--render-overlay")window.RenderOverlay(args[1]);else if(args[0]=="--render-select")window.RenderOverlay(args[1],true,args.Length>2?args[2]:null,args.Length>2);else using(var bitmap=new Bitmap(window.Width,window.Height)) {window.DrawToBitmap(bitmap,new Rectangle(0,0,bitmap.Width,bitmap.Height));bitmap.Save(args[1]);}window.Close();}return 0;
         }
         DesktopShortcut.Ensure();
         LunarLog.Start();
         AppIcon.RefreshShellCacheIfChanged();
         StartupPreference.Repair();
-        // Single instance: opening Lunar again just brings the running window to the front (no second tray icon).
         bool first;
         var instance=new System.Threading.Mutex(true,@"Local\LunarSingleInstance",out first);
         if(!first){
@@ -1264,8 +1245,6 @@ static class Program {
         return 0;
     }
 }
-// The app icon, read from the icon embedded in Lunar itself. Icon.ExtractAssociatedIcon goes through the Windows
-// icon cache, which keeps showing the previous icon after an update (same .exe path).
 static class AppIcon {
     public static Icon Load(){
         try{
@@ -1274,8 +1253,6 @@ static class AppIcon {
         }catch(Exception e){LunarLog.Error("app","embedded icon failed",e);}
         return Icon.ExtractAssociatedIcon(typeof(AppIcon).Assembly.Location);
     }
-    // When the icon changes (an update with a new logo), ask Windows to refresh its icon cache once so the
-    // taskbar pin, Start menu and desktop shortcut show the new icon too.
     public static void RefreshShellCacheIfChanged(){
         try{
             string hash;
@@ -1290,13 +1267,12 @@ static class AppIcon {
             File.WriteAllText(marker,hash);
             string tool=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),"ie4uinit.exe");
             if(File.Exists(tool))Process.Start(new ProcessStartInfo(tool,"-show"){UseShellExecute=false,CreateNoWindow=true});
-            SHChangeNotify(0x08000000,0x0000,IntPtr.Zero,IntPtr.Zero); // SHCNE_ASSOCCHANGED: shell reloads icons
+            SHChangeNotify(0x08000000,0x0000,IntPtr.Zero,IntPtr.Zero);
             LunarLog.Write("app","icon changed → Windows icon cache refreshed");
         }catch(Exception e){LunarLog.Error("app","icon cache refresh failed",e);}
     }
     [DllImport("shell32.dll")] static extern void SHChangeNotify(int eventId,int flags,IntPtr item1,IntPtr item2);
 }
-// "Start with Windows": HKCU Run entry pointing at this executable with --tray (no admin rights needed).
 static class StartupPreference {
     const string RunKey=@"Software\Microsoft\Windows\CurrentVersion\Run",Name="Lunar";
     static string Command{get{return "\""+Application.ExecutablePath+"\" --tray";}}
@@ -1311,8 +1287,6 @@ static class StartupPreference {
             LunarLog.Write("app","start with Windows "+(enabled?"on":"off"));
         }catch(Exception e){LunarLog.Error("app","start with Windows could not be changed",e);}
     }
-    // The installed copy keeps the Run entry pointing at itself (e.g. after a reinstall). Portable/test copies
-    // never touch an existing entry.
     public static void Repair(){
         string installed=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Programs","Lunar","Lunar.exe");
         if(!String.Equals(Application.ExecutablePath,installed,StringComparison.OrdinalIgnoreCase))return;
@@ -1352,7 +1326,6 @@ static class Tests {
     public static int Run(){
         string me="11111111-1111-1111-1111-111111111111",other="22222222-2222-2222-2222-222222222222";
         Func<string,object> parse=Json.Codec.DeserializeObject;
-        // Score from the 2024+ nested presence format and from the older flat one.
         Func<string,object> presenceEntry=json=>new Dictionary<string,object>{{"private",Convert.ToBase64String(Encoding.UTF8.GetBytes(json))}};
         var live=new Snapshot{Status="IN MATCH",Match="m-1",Map="Summit"};
         RiotReader.ApplyDiscordScore(live,RiotReader.RiotPresenceData(presenceEntry("{\"matchPresenceData\":{\"sessionLoopState\":\"INGAME\",\"matchMap\":\"\"},\"partyPresenceData\":{\"isPartyOwner\":true,\"partyOwnerSessionLoopState\":\"INGAME\",\"partyOwnerMatchScoreAllyTeam\":7,\"partyOwnerMatchScoreEnemyTeam\":5}}")));
@@ -1376,7 +1349,6 @@ static class Tests {
             profs["raph"].Matches.Add(shared("Swiftplay","m-swift"));
             var duo=LiveMatchArt.RosterParties(snap,profs,now);
             Check(duo.ContainsKey("raph")&&duo.ContainsKey("gab")&&duo["raph"]==duo["gab"]&&!duo.ContainsKey("solo"),"duo detected from a recent Swiftplay match");
-            // gab played solo after the duo match: the older shared match still marks them as a duo.
             profs["gab"]=new PlayerProfile{Id="gab"};var later=shared("Swiftplay","m-later");later.Started=now.AddHours(-1);
             later.Roster.RemoveAll(r=>r.Id=="raph");profs["gab"].Matches.Add(later);
             profs["raph"].Matches[0].Started=now.AddHours(-3);

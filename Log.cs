@@ -6,9 +6,6 @@ using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
 namespace Lunar {
-// Support log at %LOCALAPPDATA%\Lunar\logs\lunar.log. Never contains tokens, cookies, passwords, player IDs or names:
-// callers log steps and status codes, and every line is scrubbed again (GUIDs, JWTs, Basic/Bearer values, ports'
-// passwords) before it is written. Rotates at 1 MB (keeps one previous file).
 static class LunarLog {
     static readonly object Gate=new object();
     static readonly string Folder=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Lunar","logs");
@@ -34,7 +31,6 @@ static class LunarLog {
         try{
             string line=Scrub(message);
             lock(Gate){
-                // Collapse identical consecutive lines (polling loops) into a counter.
                 if(area+line==last){repeats++;return;}
                 Directory.CreateDirectory(Folder);
                 if(File.Exists(FilePath)&&new FileInfo(FilePath).Length>MaxBytes){
@@ -61,7 +57,6 @@ static class LunarLog {
         AppDomain.CurrentDomain.UnhandledException+=(s,e)=>Error("crash","Unhandled exception",e.ExceptionObject as Exception);
         System.Threading.Tasks.TaskScheduler.UnobservedTaskException+=(s,e)=>{Error("crash","Unobserved task exception",e.Exception==null?null:e.Exception.GetBaseException());e.SetObserved();};
     }
-    // Writes a scrubbed copy of the log (+ the previous file) to the Desktop and selects it in Explorer.
     public static string Export(){
         lock(Gate){
             var text=new StringBuilder();

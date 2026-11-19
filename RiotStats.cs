@@ -82,7 +82,7 @@ static class RiotStatsClient {
         internal DateTime Expires;
         internal string Pd {get{return "https://pd."+Shard+".a.pvp.net";}}
     }
-    static readonly SemaphoreSlim sessionGate=new SemaphoreSlim(1,1),networkGate=new SemaphoreSlim(10,10),backgroundGate=new SemaphoreSlim(4,4); // live board: 4 players in parallel
+    static readonly SemaphoreSlim sessionGate=new SemaphoreSlim(1,1),networkGate=new SemaphoreSlim(10,10),backgroundGate=new SemaphoreSlim(4,4);
     static volatile Session session;
     static int sessionBuilds,sessionReuses;
     internal static int SessionBuildCount {get{return Volatile.Read(ref sessionBuilds);}}
@@ -114,12 +114,10 @@ static class RiotStatsClient {
             bool old=oldActs.Contains(entry.Key);
             if(old&&tier>=21)tier+=3;
             if(old&&final>=21)final+=3;
-            // RR is only known when the act ENDED at the peak tier (WinsByTier gives the tier, not the RR).
             int rr=final==tier&&finalRR>=0?(int)finalRR:-1;
             if(tier>profile.PeakTier){profile.PeakTier=tier;profile.PeakRR=rr;}
             else if(tier==profile.PeakTier&&rr>profile.PeakRR)profile.PeakRR=rr;
         }
-        // The current act counts too: being at the peak tier right now with more RR raises the peak RR.
         if(profile.RankIsCurrent&&profile.Tier==profile.PeakTier&&profile.RR>profile.PeakRR)profile.PeakRR=profile.RR;
     }
     static readonly SemaphoreSlim[] matchLocks=Enumerable.Range(0,64).Select(i=>new SemaphoreSlim(1,1)).ToArray();
@@ -268,7 +266,6 @@ static class RiotStatsClient {
     }
     internal static bool HasRiotId(string value){int split=(value??"").LastIndexOf('#');return split>0&&!String.IsNullOrWhiteSpace(value.Substring(0,split))&&!String.IsNullOrWhiteSpace(value.Substring(split+1));}
     internal static string CardId(object card){Guid id;var text=card as string??Json.S(card,"id");if(text=="")text=Json.S(card,"uuid");return Guid.TryParse(text,out id)&&id!=Guid.Empty?id.ToString():"";}
-    // Support probe: last matches of a player and who shared their party (names only, no ids).
     internal static void PartyProbe(string riotId){
         var player=LookupAsync(riotId,CancellationToken.None).GetAwaiter().GetResult();
         var history=Get("/match-history/v1/history/"+Uri.EscapeDataString(player.Id)+"?startIndex=0&endIndex=4",CancellationToken.None).GetAwaiter().GetResult();
@@ -321,8 +318,6 @@ static class RiotStatsClient {
         await backgroundGate.WaitAsync(cancel).ConfigureAwait(false);
         try{
             var page=await LoadPage(player,0,10,"Competitive",cancel).ConfigureAwait(false);
-            // Swiftplay/Unrated players often have no recent competitive games: without this their K/D, recent form
-            // and premade (duo) detection stay empty during the match.
             int completed=page.Items.Count(item=>!Json.B(item,"unavailable")&&Json.B(Json.Get(item,"matchInfo"),"isCompleted"));
             if(completed<3&&!page.CompetitiveOnly){
                 try{
@@ -353,7 +348,6 @@ static class RiotStatsClient {
                 var page=await history.ConfigureAwait(false);
                 try{await rrTask.ConfigureAwait(false);}catch(OperationCanceledException){throw;}catch(Exception){}
                 ApplyPeakFromUpdates(profile);
-                // Peak RR still unknown for a profile someone opened: look a little further back (up to 100 matches).
                 if(!background&&profile.PeakTier>=3&&profile.PeakRR<0){
                     try{await LoadRR(player,100,cancel).ConfigureAwait(false);}catch(OperationCanceledException){throw;}catch(Exception){}
                     ApplyPeakFromUpdates(profile);
@@ -372,26 +366,21 @@ static class RiotStatsClient {
             }catch(RiotStatsException error){AddError(profile,error,"History");}
             if(!profile.Limited)profile.RetryAfter=DateTime.UtcNow.AddMinutes(5);
         }finally{
-            // Observe the parallel history request even when rank loading is cancelled.
             if(!history.IsCompleted){var observation=history.ContinueWith(t=>{var ignored=t.Exception;},TaskContinuationOptions.OnlyOnFaulted);}
             else if(history.IsFaulted){var ignored=history.Exception;}
         }
         return profile;
     }
-    // Host + path only (no query string); IDs are scrubbed by the log itself.
     static string LogPath(string url){Uri uri;return Uri.TryCreate(url,UriKind.Absolute,out uri)?uri.Host+uri.AbsolutePath:"?";}
     static void AddError(PlayerProfile profile,RiotStatsException error,string section){
         LunarLog.Write("profile",section+" failed: HTTP "+error.Status+" · "+error.Message);
         string text=error.Status==404?"Riot did not return data for this player.":error.Message;
-        // Rank and history usually fail for the same reason: say it once, without a section prefix.
         if(error.Status==401||error.Status==0){if(!profile.Message.Contains(text))profile.Message+=text+" ";}
         else profile.Message+=section+": "+text+" ";
         if(error.Status==429){profile.Limited=true;profile.RetryAfter=error.RetryAfter;}
     }
-    // RR gained/lost per competitive match, from Riot's competitive updates (match history itself has no RR).
     static readonly System.Collections.Concurrent.ConcurrentDictionary<string,int> rrByMatch=new System.Collections.Concurrent.ConcurrentDictionary<string,int>(StringComparer.OrdinalIgnoreCase);
     static readonly System.Collections.Concurrent.ConcurrentDictionary<string,int> rrFetched=new System.Collections.Concurrent.ConcurrentDictionary<string,int>(StringComparer.OrdinalIgnoreCase);
-    // Best (tier, RR after the match) seen in a player's competitive updates; used for the peak RR.
     static readonly System.Collections.Concurrent.ConcurrentDictionary<string,KeyValuePair<int,int>> peakSeen=new System.Collections.Concurrent.ConcurrentDictionary<string,KeyValuePair<int,int>>(StringComparer.OrdinalIgnoreCase);
     internal static void RememberRR(IEnumerable<object> updates,string player=null){
         foreach(var u in updates){
@@ -404,14 +393,11 @@ static class RiotStatsClient {
             peakSeen.AddOrUpdate(player,new KeyValuePair<int,int>(tier,rr),(key,best)=>tier>best.Key||tier==best.Key&&rr>best.Value?new KeyValuePair<int,int>(tier,rr):best);
         }
     }
-    // Peak RR from match-by-match updates when the act summaries could not provide it.
     internal static void ApplyPeakFromUpdates(PlayerProfile profile){
         KeyValuePair<int,int> best;
         if(profile==null||profile.PeakTier<3||String.IsNullOrEmpty(profile.Id)||!peakSeen.TryGetValue(profile.Id,out best))return;
         if(best.Key==profile.PeakTier&&best.Value>profile.PeakRR)profile.PeakRR=best.Value;
     }
-    // Fetches competitive updates in pages of 20 until at least `upTo` are known (max 200). Failures are ignored:
-    // RR is a nice-to-have and must never break profile loading.
     static async Task LoadRR(Player player,int upTo,CancellationToken cancel){
         try{
             string id=PlayerId(player);
@@ -481,11 +467,8 @@ static class RiotStatsClient {
         if(row==null)return null;
         var missing=row.Roster.Where(p=>!HasRiotId(p.Name)&&!names.ContainsKey(p.Id)).Select(p=>p.Id).Distinct().ToArray();
         if(missing.Length>0){
-            var response=await Get("/name-service/v2/players",cancel,"PUT",missing).ConfigureAwait(false);
-            foreach(var item in Json.A(response)){
-                string subject=Json.S(item,"Subject"),name=Json.S(item,"GameName"),tag=Json.S(item,"TagLine");
-                if(subject!=""&&name!=""&&tag!="")names[subject]=name+"#"+tag;
-            }
+            var resolved=await RiotNames.ResolveAsync(missing,(path,body)=>Get(path,cancel,"PUT",body)).ConfigureAwait(false);
+            foreach(var pair in resolved)names[pair.Key]=pair.Value;
         }
         ApplyNames(row,names);return row;
     }

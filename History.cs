@@ -11,13 +11,13 @@ enum Outcome { Unknown, Win, Loss, Draw, Ignored }
 enum MvpKind {None,Match,Team}
 class MatchRow {
     public string AgentId="",SeasonId="";public Performance Metrics=new Performance();public List<ScorePlayer> Roster=new List<ScorePlayer>();public int? RRChange;
-    public MvpKind Mvp; // Match MVP = top combat score of the match; Team MVP = top score of the other team
+    public MvpKind Mvp;
     public string Id="",Map="Map unavailable",Queue="",Score="—",Kda="—";
     public string MapId="",Region="";
     public DateTime Started; public Outcome Result; public bool Completed;
 }
 class PlayerProfile {
-    public int PeakTier=-1,PeakRR=-1; // PeakRR: end-of-act RR of the best act (-1 when Riot only reports the tier)
+    public int PeakTier=-1,PeakRR=-1;
     public int AccountLevel;public bool AccountLevelHidden,AccountLevelFromMatch;
     public byte[] CardArt;
     public string CardId;
@@ -54,8 +54,6 @@ static class HistoryLogic {
         else if(completion=="VoteDraw" || (completion=="Completed"&&N(team,"roundsWon",-1)>=0&&N(team,"roundsWon",-1)==N(enemy,"roundsWon",-2)))row.Result=Outcome.Draw;
         return row;
     }
-    // VALORANT-style MVP from combat score: the top scorer of the match is Match MVP; the top scorer of the other
-    // team is Team MVP. Needs scores for at least two players; Team MVP only exists with exactly two teams.
     public static MvpKind MvpFor(List<ScorePlayer> roster,string subject){
         if(roster==null||String.IsNullOrEmpty(subject))return MvpKind.None;
         var scored=roster.Where(r=>r!=null&&r.Stats!=null&&r.Stats.HasScore&&!String.IsNullOrEmpty(r.Id)).ToList();
@@ -124,7 +122,6 @@ class HistoryEngine {
                 if(!details.TryGetValue(shard+match,out data)){
                     if(watch.Elapsed.TotalSeconds>22){p.DayComplete=false;p.Message+="Partial results. Retrying automatically. ";break;}
                     try{
-                        // Spread calls while keeping the UI and roster polling independent.
                         if(cancel.WaitHandle.WaitOne(100))cancel.ThrowIfCancellationRequested();
                         data=get(pd+"/match-details/v1/matches/"+match);
                         if(Json.B(Json.Get(data,"matchInfo"),"isCompleted")){if(details.Count>350)details.Clear();details[shard+match]=data;}

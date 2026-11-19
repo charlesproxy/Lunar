@@ -184,9 +184,6 @@ partial class RiotReader {
             return FlattenPresence(Json.Codec.DeserializeObject(json));
         }catch(FormatException){return null;}catch(ArgumentException){return null;}catch(InvalidOperationException){return null;}
     }
-    // Since 2024 VALORANT nests presence fields (matchPresenceData.sessionLoopState, partyPresenceData.
-    // partyOwnerMatchScoreAllyTeam, playerPresenceData…). Lift them to the top level so readers work with both the
-    // old flat format and the new one. Existing top-level keys win.
     static readonly string[] PresenceSections={"matchPresenceData","partyPresenceData","playerPresenceData","premierPresenceData"};
     internal static object FlattenPresence(object presence){
         var root=presence as System.Collections.Generic.Dictionary<string,object>;
@@ -228,7 +225,6 @@ partial class RiotReader {
             if(own){ApplyDiscordScore(snapshot,presence);PresenceSummary=DescribePresence(entry,presence,snapshot);}
         }
     }
-    // Diagnostics only: which presence fields VALORANT sends (names, phase and score; no IDs, names or tokens).
     internal static string PresenceSummary="Presence: not read yet";
     static string DescribePresence(object entry,object flat,Snapshot snapshot){
         var raw=Json.Get(entry,"private");
@@ -288,8 +284,6 @@ sealed class DesktopIntegration:IDisposable {
     string pendingMatch="",dismissedMatch="";
     string activeMatch="";
     bool interactiveOverlay;
-    // Exclusive fullscreen: Windows cannot draw any window above the game, so the overlay is not shown at all.
-    // Lunar remembers that the overlay was missed and explains how to fix it once the player leaves the game.
     bool fullscreenActive,overlayMissed;
     DateTime nextGameProcessCheck;
     IntPtr interactiveGame;
@@ -321,11 +315,9 @@ sealed class DesktopIntegration:IDisposable {
         menu=new RoundedTrayMenu{ShowImageMargin=false,ShowCheckMargin=false,BackColor=TrayMenuRenderer.Surface,
             ForeColor=Palette.Text,Padding=new Padding(6,6,6,6),Renderer=new TrayMenuRenderer(),Font=new Font("Segoe UI",9.5f)};
         trayLogo=TrackArt.Asset("lunar.png");
-        // Header: logo, name and version (drawn by TrayMenuRenderer).
         menu.Items.Add(new ToolStripLabel("Lunar"){Name="header",Font=new Font("Segoe UI",11.5f,FontStyle.Bold),ForeColor=Palette.Text,
             AutoSize=false,Size=new Size(TrayMenuRenderer.Width,40),Margin=new Padding(0,2,0,0),Padding=new Padding(44,0,0,0),
             TextAlign=ContentAlignment.MiddleLeft});
-        // Status pill: colour comes from the phase (green in match, purple agent select, grey waiting).
         trayPhase=new ToolStripLabel("Waiting for VALORANT"){Name="phase",ForeColor=Palette.Text,AutoSize=false,Size=new Size(TrayMenuRenderer.Width,34),
             Margin=new Padding(0,0,0,4),Padding=new Padding(30,0,10,0),TextAlign=ContentAlignment.MiddleLeft,Font=new Font("Segoe UI",8.75f,FontStyle.Bold)};
         menu.Items.Add(trayPhase);
@@ -341,7 +333,6 @@ sealed class DesktopIntegration:IDisposable {
         installUpdate.Available=false;
         menu.Items.Add(new ToolStripSeparator());
         TrayAction("Exit Lunar",delegate{ExitWithUpdate(false);},TrayGlyph.Power).ForeColor=Color.FromArgb(240,130,150);
-        // Diagnostics stay reachable for support: Ctrl+Shift+D in the Lunar window copies them.
         main.KeyPreview=true;
         main.KeyDown+=delegate(object sender,KeyEventArgs e){
             if(e.Control&&e.Shift&&e.KeyCode==Keys.L){
@@ -353,7 +344,6 @@ sealed class DesktopIntegration:IDisposable {
                 e.Handled=true;
             }
         };
-        // The Discord switch toggles in place: the menu stays open so the new state is visible.
         bool keepMenuOpen=false;
         menu.ItemClicked+=delegate(object sender,ToolStripItemClickedEventArgs e){keepMenuOpen=e.ClickedItem==discordMenu;};
         menu.Closing+=delegate(object sender,ToolStripDropDownClosingEventArgs e){
@@ -407,7 +397,6 @@ sealed class DesktopIntegration:IDisposable {
     internal bool UpdateReady {get{return pendingUpdate!=null;}}
     internal void CheckUpdatesNow(){nextUpdateCheck=DateTime.MinValue;CheckUpdates();}
     DateTime lastUpdateCheck=DateTime.MinValue;
-    // Opening the window also checks, at most once every 2 minutes.
     internal void CheckUpdatesSoon(){if(DateTime.UtcNow-lastUpdateCheck>TimeSpan.FromMinutes(2))CheckUpdatesNow();}
     void ExitWithUpdate(bool restart){
         if(restart&&pendingUpdate!=null){
@@ -508,15 +497,11 @@ sealed class DesktopIntegration:IDisposable {
         if(ExclusiveFullscreen(gameWindow)){MissOverlay();return;}
         interactiveGame=gameWindow;
         interactiveOverlay=true;
-        // The dim backdrop covering the whole game takes the focus: VALORANT stops reading the mouse (the camera
-        // no longer moves and the cursor appears), and because the focused window still covers the whole
-        // monitor Windows keeps treating it as fullscreen, so the taskbar stays hidden.
         ShowOverlay(game);
         const uint NoSize=0x0001,NoMove=0x0002,NoActivate=0x0010,ShowWindow=0x0040;
         SetForegroundWindow(backdrop.Handle);
         backdrop.Activate();
-        // Activation raises the backdrop; put the overlay back on top of it.
-        SetWindowPos(selection.Handle,new IntPtr(-1),0,0,0,0,NoSize|NoMove|NoActivate|ShowWindow); // HWND_TOPMOST
+        SetWindowPos(selection.Handle,new IntPtr(-1),0,0,0,0,NoSize|NoMove|NoActivate|ShowWindow);
     }
     void ReadShortcutFallback(Rectangle game,IntPtr gameWindow){
         bool pressed=KeyDown(hotkey)&&
@@ -536,7 +521,7 @@ sealed class DesktopIntegration:IDisposable {
     [DllImport("user32.dll")] static extern bool ShowWindowAsync(IntPtr hwnd,int command);
     [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
     [DllImport("shell32.dll")] static extern int SHQueryUserNotificationState(out int state);
-    const int RunningExclusiveFullscreen=3; // QUNS_RUNNING_D3D_FULL_SCREEN
+    const int RunningExclusiveFullscreen=3;
     DateTime gameFocusedSince=DateTime.MaxValue;
     IntPtr focusedGame;
 
@@ -551,15 +536,10 @@ sealed class DesktopIntegration:IDisposable {
         var screen=Screen.FromHandle(hwnd).Bounds;
         Rectangle client;
         var origin=Point.Empty;
-        // A minimized/alt-tabbed fullscreen game can still be the "foreground" window with an empty client area.
-        // Never fall back to the whole screen in that case, or the overlay pops up over the desktop.
         if(!GetClientRect(hwnd,out client)||!ClientToScreen(hwnd,ref origin))return Rectangle.Empty;
         var visible=Rectangle.Intersect(new Rectangle(origin,client.Size),screen);
         return visible.Width>320&&visible.Height>240?visible:Rectangle.Empty;
     }
-    // True when VALORANT runs in exclusive Fullscreen, where no other window can appear above the game.
-    // Signals: Windows reports a D3D exclusive app, or VALORANT's own settings say Fullscreen (FullscreenMode=0)
-    // while the game window covers its whole monitor.
     static bool ExclusiveFullscreen(IntPtr gameWindow){
         int state;
         try{if(SHQueryUserNotificationState(out state)==0&&state==RunningExclusiveFullscreen)return true;}
@@ -576,8 +556,6 @@ sealed class DesktopIntegration:IDisposable {
     }
     static DateTime settingReadAt=DateTime.MinValue;
     static bool settingFullscreen;
-    // Reads FullscreenMode from the most recently saved VALORANT GameUserSettings.ini (0 = Fullscreen,
-    // 1 = Windowed Fullscreen, 2 = Windowed). Cached for 10 seconds.
     internal static bool ValorantFullscreenSetting(){
         if(DateTime.UtcNow-settingReadAt<TimeSpan.FromSeconds(10))return settingFullscreen;
         settingReadAt=DateTime.UtcNow;settingFullscreen=false;
@@ -599,7 +577,6 @@ sealed class DesktopIntegration:IDisposable {
         }catch(Exception){}
         return settingFullscreen;
     }
-    // The overlay should have opened (agent select or hotkey) but the game is in exclusive Fullscreen.
     void MissOverlay(){
         overlayMissed=true;
         SetFullscreen(true);
@@ -611,7 +588,6 @@ sealed class DesktopIntegration:IDisposable {
         trayWarning.Available=active;
         main.SetFullscreenWarning(active);
     }
-    // Shown once the player is back in Lunar/Windows, because nothing can be shown over the game itself.
     void ShowMissedOverlayNotice(){
         if(!overlayMissed)return;
         overlayMissed=false;
@@ -622,12 +598,10 @@ sealed class DesktopIntegration:IDisposable {
         catch(Exception){return true;}
     }
     void SyncOverlay(){
-        // Hide the hotkey overlay only when the player leaves the game (Alt+Tab, another window in front).
         if(interactiveOverlay&&!OverlayHasFocus()&&interactiveGame!=IntPtr.Zero&&GetForegroundWindow()!=interactiveGame)HideOverlay();
         var window=ShortcutWindow();
         var game=shortcutActive?ForegroundGame(window):Rectangle.Empty;
         if(game.IsEmpty){
-            // Back on the desktop after a missed overlay: explain it now that something can be shown.
             if(overlayMissed&&main.Visible&&main.WindowState!=FormWindowState.Minimized)ShowMissedOverlayNotice();
             if(fullscreenActive&&DateTime.UtcNow>=nextGameProcessCheck){
                 nextGameProcessCheck=DateTime.UtcNow.AddSeconds(5);
@@ -644,7 +618,6 @@ sealed class DesktopIntegration:IDisposable {
         RegisterShortcut();
         foreground.Interval=registered?350:40;
         if(registered)watchingFallback=false;
-        // Exclusive fullscreen: nothing can be drawn above the game, so never show an invisible overlay.
         bool fullscreen=ExclusiveFullscreen(window);
         SetFullscreen(fullscreen);
         bool requested=OverlayRequested(pendingMatch,dismissedMatch,interactiveOverlay);
@@ -652,7 +625,6 @@ sealed class DesktopIntegration:IDisposable {
             if(requested&&pendingMatch!=""){dismissedMatch=pendingMatch;MissOverlay();}
             if(interactiveOverlay)HideOverlay();else HideOverlayWindows();
         }else{
-            // Automatic agent-select popup: only after VALORANT has stayed focused for a moment.
             bool settled=DateTime.UtcNow-gameFocusedSince>=TimeSpan.FromMilliseconds(800);
             if((interactiveOverlay||settled)&&requested)ShowOverlay(game);
             else if(!interactiveOverlay)HideOverlayWindows();
@@ -666,8 +638,6 @@ sealed class DesktopIntegration:IDisposable {
         int width=Math.Min(606,game.Width-24),height=Math.Min(preferredHeight,game.Height-24);
         int x=game.X+(game.Width-width)/2;
         if(agentSelect){
-            // Agent select: the overlay ends just above the countdown (which starts at ~64% of the screen height),
-            // horizontally centred — not pushed to the top of the screen.
             int top=Math.Max(game.Y+12,game.Y+(int)(game.Height*0.58)-height);
             return new Rectangle(x,top,width,height);
         }
@@ -738,7 +708,6 @@ sealed class DesktopIntegration:IDisposable {
         toggleTimer.Start();StepToggle();
     }
     internal static float ToggleEase(double p){
-        // Ease-out with a small bounce at the end.
         p=Math.Max(0,Math.Min(1,p));
         const double c1=1.9,c3=c1+1;
         return (float)(1+c3*Math.Pow(p-1,3)+c1*Math.Pow(p-1,2));
@@ -826,7 +795,6 @@ sealed class OverlayBackdrop:Form {
         BackColor=Color.Black;
         Opacity=.24;
     }
-    // Esc or a click on the dimmed area closes the Live Match overlay.
     public event EventHandler Dismiss;
     protected override bool ShowWithoutActivation{get{return true;}}
     protected override CreateParams CreateParams{get{var cp=base.CreateParams;cp.ExStyle|=0x00000080;return cp;}}
@@ -918,14 +886,11 @@ sealed class DiscordToggle:CheckBox {
         t=Math.Max(0f,Math.Min(1f,t));
         return Color.FromArgb((int)(a.A+(b.A-a.A)*t),(int)(a.R+(b.R-a.R)*t),(int)(a.G+(b.G-a.G)*t),(int)(a.B+(b.B-a.B)*t));
     }
-    // position: 0 = off, 1 = on (may overshoot slightly while bouncing); motion: 0..1, how fast the knob is moving
-    // (it stretches into a pill mid-way, like a real switch).
     internal static void DrawTrack(Graphics g,Rectangle bounds,float position,float motion){
         float on=Math.Max(0f,Math.Min(1f,position));
         float shade=on*on*(3-2*on);
         g.SmoothingMode=SmoothingMode.AntiAlias;
         if(shade>0.01f){
-            // Soft glow around the track when switched on.
             for(int ring=3;ring>=1;ring--)
                 using(var glow=Skin.Round(Rectangle.Inflate(bounds,ring,ring),bounds.Height/2+ring))
                 using(var halo=new SolidBrush(Color.FromArgb((int)(shade*(16+(3-ring)*12)),Palette.Accent)))g.FillPath(halo,glow);
@@ -939,7 +904,6 @@ sealed class DiscordToggle:CheckBox {
         float dot=bounds.Height-8,travel=bounds.Width-8-dot;
         float stretch=dot*0.45f*Math.Max(0f,Math.Min(1f,motion));
         float x=bounds.X+4+travel*position;
-        // Stretch towards the direction of travel, keeping the knob inside the track.
         float left=Math.Max(bounds.X+3,x-stretch*(1-on)),right=Math.Min(bounds.Right-3,x+dot+stretch*on);
         var knob=new RectangleF(left,bounds.Y+4,Math.Max(dot,right-left),dot);
         using(var shadow=Skin.Round(Rectangle.Round(new RectangleF(knob.X,knob.Y+1,knob.Width,knob.Height)),(int)(dot/2)))
@@ -989,13 +953,11 @@ sealed class TrayMenuRenderer:ToolStripProfessionalRenderer {
     public const int Width=252;
     public static readonly Dictionary<ToolStripItem,TrayGlyph> Glyphs=new Dictionary<ToolStripItem,TrayGlyph>();
     public static Color PhaseColor=Palette.Muted;
-    // Animated Discord switch (driven by DesktopIntegration.AnimateToggle).
     public static float TogglePosition,ToggleMotion;
     static readonly Image Logo=TrackArt.Asset("lunar.png"),Clyde=TrackArt.Asset("discord-clyde.png");
     public TrayMenuRenderer(){RoundedEdges=false;}
     protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e){
         var g=e.Graphics;g.Clear(Surface);
-        // Soft accent glow behind the header.
         var top=new Rectangle(0,0,e.ToolStrip.Width,70);
         using(var glow=new LinearGradientBrush(new Rectangle(0,-1,top.Width,top.Height+2),Color.FromArgb(34,Palette.Accent),Color.FromArgb(0,Palette.Accent),90f)){
             glow.WrapMode=WrapMode.TileFlipXY;g.FillRectangle(glow,top);
@@ -1072,7 +1034,6 @@ sealed class TrayMenuRenderer:ToolStripProfessionalRenderer {
         using(var border=new Pen(Color.FromArgb(46,255,255,255)))
             e.Graphics.DrawLine(border,14,e.Item.Height/2,e.Item.Width-14,e.Item.Height/2);
     }
-    // Text is positioned here (WinForms ignores item padding for these owner-drawn rows).
     protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e){
         var item=e.Item;
         int left=item.Name=="header"?50:item.Name=="phase"?36:item is ToolStripLabel?16:42;
@@ -1287,9 +1248,6 @@ static class LiveMatchArt {
             if(!String.IsNullOrEmpty(player.PartyId)&&confirmed.ContainsKey(player.PartyId))
                 colors[player.Id]=confirmed[player.PartyId];
 
-        // Premades from recent history: two players on the same team now who shared a party in ANY of their
-        // matches from the last 2 days (not only their latest one — a duo member may have played solo since).
-        // Any mode with parties counts (duos often queue Swiftplay/Unrated); Deathmatch has no parties.
         var matches=roster.Where(player=>profiles.ContainsKey(player.Id))
             .SelectMany(player=>profiles[player.Id].Matches)
             .Where(match=>match.Completed&&match.Id!=""&&match.Id!=snapshot.Match&&match.Queue!="Deathmatch"&&
@@ -1316,7 +1274,6 @@ static class LiveMatchArt {
                 .Select(group=>group.ToArray()).OrderBy(ids=>ids.OrderBy(id=>id,StringComparer.OrdinalIgnoreCase).First(),StringComparer.OrdinalIgnoreCase);
             foreach(var ids in components){
                 if(ids.All(id=>colors.ContainsKey(id)))continue;
-                // Extend an existing (confirmed) party instead of splitting it into two colors.
                 string colored=ids.FirstOrDefault(id=>colors.ContainsKey(id));
                 var color=colored!=null?colors[colored]:Color.FromArgb(175,PartyColors[groupIndex++%PartyColors.Length]);
                 foreach(string id in ids)if(!colors.ContainsKey(id))colors[id]=color;
@@ -1334,7 +1291,7 @@ static class LiveMatchArt {
         if(profile==null)return;
         int i=0;
         foreach(var match in profile.Matches.Where(m=>m.Completed&&(m.Result==Outcome.Win||m.Result==Outcome.Loss||m.Result==Outcome.Draw))
-                    .OrderByDescending(m=>m.Started).Take(5).Reverse()){ // read left to right: oldest → newest (newest at the right)
+                    .OrderByDescending(m=>m.Started).Take(5).Reverse()){
             var rect=new Rectangle(x+i*step,y,16,16);
             Color fill=match.Result==Outcome.Win?Color.FromArgb(28,105,74):
                 match.Result==Outcome.Loss?Color.FromArgb(147,48,70):Color.FromArgb(64,55,79);
@@ -1353,7 +1310,6 @@ namespace Lunar {
 sealed class DiscordActivity {
     readonly string details,state,map,agent,mapArt,agentArt;
     public readonly long Started;
-    // Shown on the Discord profile in agent select and in a match; otherwise the activity is cleared.
     public readonly bool Visible,InMatch;
     public string Key{get{return Visible?String.Join("|",details,state,map,agent,mapArt,agentArt,Started.ToString()):"hidden";}}
     DiscordActivity(string details,string state,string map,string agent,string mapArt,string agentArt,long started,bool visible,bool inMatch){
@@ -1445,8 +1401,6 @@ sealed class DiscordPresence:IDisposable {
                 start=DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             }
             var next=DiscordActivity.From(snapshot,start);
-            // The timer restarts when the activity appears (agent select) and again when the match itself starts
-            // (agent select and the match share the same match ID).
             if(next.Visible&&(!state.Visible||next.InMatch!=state.InMatch))next=DiscordActivity.From(snapshot,DateTimeOffset.UtcNow.ToUnixTimeSeconds());
             if(state.Key==next.Key)return;
             state=next;
@@ -1479,7 +1433,6 @@ sealed class DiscordPresence:IDisposable {
                         }else status="Waiting for Discord desktop";
                     }
                     if(enabled&&pipe!=null&&!activity.Visible){
-                        // Not in a match: clear the activity once, nothing to refresh.
                         if(sent!=activity.Key){await SetActivity(pipe,null);sent=activity.Key;}
                         status=IdleStatus;
                     }else if(enabled&&pipe!=null&&(sent!=activity.Key||DateTime.UtcNow>=refreshAt)){

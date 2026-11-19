@@ -15,3 +15,6 @@
 # Riot sessions (never package credentials)
 ssid.txt
 *.ssid
+
+# Private name-resolution implementation (kept out of the public source on purpose)
+Names.Private.cs

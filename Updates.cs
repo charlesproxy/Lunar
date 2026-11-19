@@ -26,7 +26,6 @@ static class LunarUpdates {
     static readonly string InstalledExe=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Programs","Lunar","Lunar.exe");
     internal static Version CurrentVersion{get{return ReadVersion(Application.ExecutablePath);}}
     internal static string DisplayVersion{get{return ReleaseVersion(CurrentVersion);}}
-    // Version of the executable staged in an update folder (for the Update ready card), or "" if unknown.
     internal static string StagedVersion(string folder){
         try{
             foreach(var file in Directory.GetFiles(folder,"Lunar-*.exe"))return ReleaseVersion(ReadVersion(file));
@@ -102,9 +101,6 @@ static class LunarUpdates {
     static DateTime apiBlockedUntil=DateTime.MinValue;
     static string lastRedirectError="";
     static DateTime redirectBlockedUntil=DateTime.MinValue;
-    // Newest release tag. Primary: the github.com/releases/latest redirect, read without following it (only the
-    // Location header). It is not the REST API, so it has no 60-requests-per-hour limit. Fallback: the REST API with
-    // ETag, which backs off until GitHub's reset time if the limit is ever reached.
     static async Task<string> LatestTag(CancellationToken cancellation){
         if(DateTime.UtcNow>=redirectBlockedUntil){
             try{
@@ -122,7 +118,7 @@ static class LunarUpdates {
     static async Task<string> RedirectTag(CancellationToken cancellation){
         var request=(HttpWebRequest)WebRequest.Create(LatestPage+"?t="+DateTime.UtcNow.Ticks);
         request.UserAgent="Lunar Update";
-        request.Method="GET"; // HEAD is throttled much sooner by github.com than GET
+        request.Method="GET";
         request.AllowAutoRedirect=false;
         using(var timeout=CancellationTokenSource.CreateLinkedTokenSource(cancellation)){
             timeout.CancelAfter(TimeSpan.FromSeconds(20));
@@ -132,7 +128,6 @@ static class LunarUpdates {
                 catch(WebException error){response=error.Response as HttpWebResponse;if(response==null)throw;}
                 using(response){
                     if((int)response.StatusCode==429||(int)response.StatusCode==403){
-                        // Burst limit on github.com: wait as long as GitHub asks (default 2 minutes).
                         int seconds;
                         if(!Int32.TryParse(response.Headers["Retry-After"],out seconds)||seconds<=0)seconds=120;
                         redirectBlockedUntil=DateTime.UtcNow.AddSeconds(Math.Min(seconds,3600));
@@ -168,7 +163,6 @@ static class LunarUpdates {
                     var response=error.Response as HttpWebResponse;
                     if(response!=null&&response.StatusCode==HttpStatusCode.NotModified&&latestTag!=null){response.Close();return latestTag;}
                     if(response!=null){
-                        // 403/429 with no remaining requests: stay away from the API until GitHub's reset time.
                         long reset;
                         if(((int)response.StatusCode==403||(int)response.StatusCode==429)&&
                             (response.Headers["X-RateLimit-Remaining"]=="0"||response.Headers["Retry-After"]!=null)){
@@ -183,7 +177,6 @@ static class LunarUpdates {
             }
         }
     }
-    // Diagnostics: "--update-probe" prints what the update check sees (does not apply anything).
     internal static int Probe(){
         try{
             System.Net.ServicePointManager.SecurityProtocol|=SecurityProtocolType.Tls12;
@@ -201,8 +194,6 @@ static class LunarUpdates {
         }catch(Exception e){Console.WriteLine("error: "+e.Message);return 1;}
     }
     static Version Normalize(Version v){return new Version(v.Major,v.Minor,Math.Max(0,v.Build),Math.Max(0,v.Revision));}
-    // Removes update folders left by earlier updates (each keeps a copy of the updater). Recent folders are kept so
-    // an update that is applying right now is never touched.
     static void CleanOldUpdates(){
         try{
             if(!Directory.Exists(Root))return;
@@ -221,12 +212,10 @@ static class LunarUpdates {
         try{
             string tag=await LatestTag(cancellation).ConfigureAwait(false);
             Version tagged;
-            // Nothing newer: stop here without downloading anything else.
             if(Version.TryParse(tag.Substring(1),out tagged)&&Normalize(tagged)<=Normalize(CurrentVersion))return null;
             manifestUrl=Feed+"/download/"+tag+"/lunar-update.json";
         }catch(OperationCanceledException){throw;}
         catch(Exception){
-            // API unavailable or rate-limited: fall back to the latest redirect, with a cache-buster.
             manifestUrl=Feed+"/latest/download/lunar-update.json?t="+DateTime.UtcNow.Ticks;
         }
         byte[] bytes;
@@ -241,8 +230,6 @@ static class LunarUpdates {
         string path=Path.Combine(folder,package.Name);
         string release=ReleaseVersion(package.Version);
         try{
-            // The executable is shipped inside a zip (no raw .exe on GitHub); the signed manifest
-            // still describes the executable, so the extracted file is hash-verified below.
             using(var archive=new MemoryStream()){
                 await Download(Feed+"/download/v"+release+"/Lunar-"+release+".zip",archive,MaxPackage,cancellation).ConfigureAwait(false);
                 archive.Position=0;
