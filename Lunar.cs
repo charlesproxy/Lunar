@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 [assembly: System.Reflection.AssemblyTitle("Lunar")]
 [assembly: System.Reflection.AssemblyProduct("Lunar")]
-[assembly: System.Reflection.AssemblyFileVersion("2.9.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("3.0.0.0")]
 
 namespace Lunar {
 static class Json {
@@ -1178,6 +1178,15 @@ static class Program {
                 }
                 window.Close();
             }
+            return 0;
+        }
+        if(args.Length==2 && args[0]=="--render-toggle") {
+            // Frames of the Discord switch animation (off -> on), scaled up for review.
+            int frames=9;
+            using(var b=new Bitmap(frames*60,40)){using(var g=Graphics.FromImage(b)){g.Clear(TrayMenuRenderer.Surface);
+                for(int i=0;i<frames;i++){double p=i/(double)(frames-1);
+                    DiscordToggle.DrawTrack(g,new Rectangle(i*60+13,12,33,16),DesktopIntegration.ToggleEase(p),(float)Math.Sin(Math.PI*Math.Min(1,p*1.6)));}}
+                using(var big=new Bitmap(b.Width*3,b.Height*3)){using(var g=Graphics.FromImage(big)){g.InterpolationMode=System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;g.DrawImage(b,0,0,big.Width,big.Height);}big.Save(args[1]);}}
             return 0;
         }
         if(args.Length==2 && args[0]=="--test-backdrop") {

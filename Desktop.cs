@@ -722,6 +722,36 @@ sealed class DesktopIntegration:IDisposable {
     }
     public void RefreshStats(){selection.Invalidate();}
 
+    readonly Timer toggleTimer=new Timer{Interval=15};
+    bool toggleReady;float toggleFrom,toggleTo;DateTime toggleStart;
+    const double ToggleMilliseconds=320;
+    void AnimateToggle(bool enabled){
+        float target=enabled?1f:0f;
+        if(!toggleReady){
+            toggleReady=true;toggleTo=target;TrayMenuRenderer.TogglePosition=target;
+            toggleTimer.Tick+=delegate{StepToggle();};
+            return;
+        }
+        if(target==toggleTo)return;
+        toggleFrom=Math.Max(0f,Math.Min(1f,TrayMenuRenderer.TogglePosition));toggleTo=target;toggleStart=DateTime.UtcNow;
+        if(!menu.Visible){TrayMenuRenderer.TogglePosition=target;TrayMenuRenderer.ToggleMotion=0;return;}
+        toggleTimer.Start();StepToggle();
+    }
+    internal static float ToggleEase(double p){
+        // Ease-out with a small bounce at the end.
+        p=Math.Max(0,Math.Min(1,p));
+        const double c1=1.9,c3=c1+1;
+        return (float)(1+c3*Math.Pow(p-1,3)+c1*Math.Pow(p-1,2));
+    }
+    void StepToggle(){
+        double p=(DateTime.UtcNow-toggleStart).TotalMilliseconds/ToggleMilliseconds;
+        if(p>=1){TrayMenuRenderer.TogglePosition=toggleTo;TrayMenuRenderer.ToggleMotion=0;toggleTimer.Stop();}
+        else{
+            TrayMenuRenderer.TogglePosition=toggleFrom+(toggleTo-toggleFrom)*ToggleEase(p);
+            TrayMenuRenderer.ToggleMotion=(float)Math.Sin(Math.PI*Math.Min(1,p*1.6));
+        }
+        if(menu.Visible)menu.Invalidate(discordMenu.Bounds);
+    }
     void ToggleDiscord(object sender,EventArgs e){
         try{discord.SetEnabled(!discord.Enabled);saveError="";}
         catch(IOException){saveError="Could not save Discord settings.";}
@@ -735,6 +765,7 @@ sealed class DesktopIntegration:IDisposable {
         bool enabled=discord.Enabled;
         discordButton.Checked=enabled;
         discordMenu.Checked=enabled;
+        AnimateToggle(enabled);
         discordMenu.Text=LunarLanguage.Translate("Discord Presence");
         discordMenu.Tag=enabled;
         string summary=DiscordToggle.StatusText(status,enabled,discord.Connected,saveError!="");
@@ -746,6 +777,7 @@ sealed class DesktopIntegration:IDisposable {
         updateTimer.Stop();updateTimer.Dispose();
         updateCancellation.Cancel();updateCancellation.Dispose();
         foreground.Stop();foreground.Dispose();
+        toggleTimer.Stop();toggleTimer.Dispose();
         UnregisterShortcut();
         EndInteraction();
         selection.Dispose();
@@ -881,16 +913,39 @@ sealed class DiscordToggle:CheckBox {
         if(disposing&&symbol!=null)symbol.Dispose();
         base.Dispose(disposing);
     }
-    internal static void DrawTrack(Graphics g,Rectangle bounds,bool enabled){
+    internal static void DrawTrack(Graphics g,Rectangle bounds,bool enabled){DrawTrack(g,bounds,enabled?1f:0f,0f);}
+    static Color Mix(Color a,Color b,float t){
+        t=Math.Max(0f,Math.Min(1f,t));
+        return Color.FromArgb((int)(a.A+(b.A-a.A)*t),(int)(a.R+(b.R-a.R)*t),(int)(a.G+(b.G-a.G)*t),(int)(a.B+(b.B-a.B)*t));
+    }
+    // position: 0 = off, 1 = on (may overshoot slightly while bouncing); motion: 0..1, how fast the knob is moving
+    // (it stretches into a pill mid-way, like a real switch).
+    internal static void DrawTrack(Graphics g,Rectangle bounds,float position,float motion){
+        float on=Math.Max(0f,Math.Min(1f,position));
+        float shade=on*on*(3-2*on);
+        g.SmoothingMode=SmoothingMode.AntiAlias;
+        if(shade>0.01f){
+            // Soft glow around the track when switched on.
+            for(int ring=3;ring>=1;ring--)
+                using(var glow=Skin.Round(Rectangle.Inflate(bounds,ring,ring),bounds.Height/2+ring))
+                using(var halo=new SolidBrush(Color.FromArgb((int)(shade*(16+(3-ring)*12)),Palette.Accent)))g.FillPath(halo,glow);
+        }
         using(var path=Skin.Round(bounds,bounds.Height/2))
-        using(var fill=new SolidBrush(enabled?Palette.Accent:Palette.Raised))
-        using(var border=new Pen(enabled?Palette.Accent:Palette.Border)){
+        using(var fill=new LinearGradientBrush(bounds,Mix(Palette.Raised,Color.FromArgb(150,110,250),shade),Mix(Palette.Raised,Palette.Accent,shade),0f))
+        using(var border=new Pen(Mix(Palette.Border,Color.FromArgb(185,150,255),shade))){
             g.FillPath(fill,path);
             g.DrawPath(border,path);
         }
-        int dot=bounds.Height-8;
-        using(var handle=new SolidBrush(enabled?Color.White:Color.FromArgb(182,170,197)))
-            g.FillEllipse(handle,enabled?bounds.Right-dot-4:bounds.X+4,bounds.Y+4,dot,dot);
+        float dot=bounds.Height-8,travel=bounds.Width-8-dot;
+        float stretch=dot*0.45f*Math.Max(0f,Math.Min(1f,motion));
+        float x=bounds.X+4+travel*position;
+        // Stretch towards the direction of travel, keeping the knob inside the track.
+        float left=Math.Max(bounds.X+3,x-stretch*(1-on)),right=Math.Min(bounds.Right-3,x+dot+stretch*on);
+        var knob=new RectangleF(left,bounds.Y+4,Math.Max(dot,right-left),dot);
+        using(var shadow=Skin.Round(Rectangle.Round(new RectangleF(knob.X,knob.Y+1,knob.Width,knob.Height)),(int)(dot/2)))
+        using(var dark=new SolidBrush(Color.FromArgb(60,0,0,0)))g.FillPath(dark,shadow);
+        using(var shape=Skin.Round(Rectangle.Round(knob),(int)(dot/2)))
+        using(var handle=new SolidBrush(Mix(Color.FromArgb(182,170,197),Color.White,shade)))g.FillPath(handle,shape);
     }
 }
 
@@ -934,6 +989,8 @@ sealed class TrayMenuRenderer:ToolStripProfessionalRenderer {
     public const int Width=252;
     public static readonly Dictionary<ToolStripItem,TrayGlyph> Glyphs=new Dictionary<ToolStripItem,TrayGlyph>();
     public static Color PhaseColor=Palette.Muted;
+    // Animated Discord switch (driven by DesktopIntegration.AnimateToggle).
+    public static float TogglePosition,ToggleMotion;
     static readonly Image Logo=TrackArt.Asset("lunar.png"),Clyde=TrackArt.Asset("discord-clyde.png");
     public TrayMenuRenderer(){RoundedEdges=false;}
     protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e){
@@ -983,9 +1040,8 @@ sealed class TrayMenuRenderer:ToolStripProfessionalRenderer {
         TrayGlyph glyph;
         if(Glyphs.TryGetValue(item,out glyph))DrawGlyph(g,glyph,new Rectangle(14,(item.Height-18)/2,18,18),item.ForeColor,item.Selected);
         if(item.Tag is bool){
-            bool enabled=(bool)item.Tag;
             var toggle=new Rectangle(item.Width-50,(item.Height-16)/2,33,16);
-            DiscordToggle.DrawTrack(g,toggle,enabled);
+            DiscordToggle.DrawTrack(g,toggle,TogglePosition,ToggleMotion);
         }
     }
     static void DrawGlyph(Graphics g,TrayGlyph glyph,Rectangle r,Color color,bool hot){
