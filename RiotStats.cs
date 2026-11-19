@@ -268,6 +268,20 @@ static class RiotStatsClient {
     }
     internal static bool HasRiotId(string value){int split=(value??"").LastIndexOf('#');return split>0&&!String.IsNullOrWhiteSpace(value.Substring(0,split))&&!String.IsNullOrWhiteSpace(value.Substring(split+1));}
     internal static string CardId(object card){Guid id;var text=card as string??Json.S(card,"id");if(text=="")text=Json.S(card,"uuid");return Guid.TryParse(text,out id)&&id!=Guid.Empty?id.ToString():"";}
+    // Support probe: last matches of a player and who shared their party (names only, no ids).
+    internal static void PartyProbe(string riotId){
+        var player=LookupAsync(riotId,CancellationToken.None).GetAwaiter().GetResult();
+        var history=Get("/match-history/v1/history/"+Uri.EscapeDataString(player.Id)+"?startIndex=0&endIndex=4",CancellationToken.None).GetAwaiter().GetResult();
+        foreach(var entry in Json.A(Json.Get(history,"History"))){
+            var match=Match(Json.S(entry,"MatchID"),CancellationToken.None).GetAwaiter().GetResult();
+            var info=Json.Get(match,"matchInfo");
+            var rows=Json.A(Json.Get(match,"players")).ToArray();
+            var me=rows.FirstOrDefault(r=>String.Equals(Json.S(r,"subject"),player.Id,StringComparison.OrdinalIgnoreCase));
+            string party=Json.S(me,"partyId");
+            var mates=rows.Where(r=>Json.S(r,"partyId")==party&&r!=me).Select(r=>Json.S(r,"gameName")+"#"+Json.S(r,"tagLine"));
+            Console.WriteLine(riotId+" | "+HistoryLogic.MapName(Json.S(info,"mapId"))+" "+Json.S(info,"queueID")+" start="+Json.S(info,"gameStartMillis")+" party="+(party==""?"none":party.Substring(0,6))+" mates=["+String.Join(", ",mates)+"]");
+        }
+    }
     public static Player Lookup(string id){return LookupAsync(id,CancellationToken.None).GetAwaiter().GetResult();}
     internal static async Task<string> LookupCardIdAsync(Player player,CancellationToken cancel){
         if(player==null||String.IsNullOrEmpty(player.Id))return "";

@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 [assembly: System.Reflection.AssemblyTitle("Lunar")]
 [assembly: System.Reflection.AssemblyProduct("Lunar")]
-[assembly: System.Reflection.AssemblyFileVersion("2.8.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("2.9.0.0")]
 
 namespace Lunar {
 static class Json {
@@ -1129,6 +1129,7 @@ static class Program {
                 b.Save(args[1]);}
             return 0;
         }
+        if(args.Length>=2&&args[0]=="--party-probe"){foreach(var id in args.Skip(1))try{RiotStatsClient.PartyProbe(id);}catch(Exception e){Console.WriteLine(id+" failed: "+e.Message);}return 0;}
         if(args.Contains("--update-probe"))return LunarUpdates.Probe();
         if(args.Contains("--probe")) {var s=new RiotReader().Poll();Console.WriteLine(s.Status+" | "+s.Detail);return 0;}
         Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
@@ -1356,6 +1357,13 @@ static class Tests {
             profs["raph"].Matches.Add(shared("Swiftplay","m-swift"));
             var duo=LiveMatchArt.RosterParties(snap,profs,now);
             Check(duo.ContainsKey("raph")&&duo.ContainsKey("gab")&&duo["raph"]==duo["gab"]&&!duo.ContainsKey("solo"),"duo detected from a recent Swiftplay match");
+            // gab played solo after the duo match: the older shared match still marks them as a duo.
+            profs["gab"]=new PlayerProfile{Id="gab"};var later=shared("Swiftplay","m-later");later.Started=now.AddHours(-1);
+            later.Roster.RemoveAll(r=>r.Id=="raph");profs["gab"].Matches.Add(later);
+            profs["raph"].Matches[0].Started=now.AddHours(-3);
+            var after=LiveMatchArt.RosterParties(snap,profs,now);
+            Check(after.ContainsKey("raph")&&after.ContainsKey("gab")&&after["raph"]==after["gab"]&&!after.ContainsKey("solo"),"duo still detected when one of them played another match since");
+            profs.Remove("gab");
             profs["raph"].Matches.Clear();profs["raph"].Matches.Add(shared("Deathmatch","m-dm"));
             Check(LiveMatchArt.RosterParties(snap,profs,now).Count==0,"Deathmatch matches do not create premades");
         {

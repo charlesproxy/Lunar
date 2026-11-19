@@ -1231,40 +1231,39 @@ static class LiveMatchArt {
             if(!String.IsNullOrEmpty(player.PartyId)&&confirmed.ContainsKey(player.PartyId))
                 colors[player.Id]=confirmed[player.PartyId];
 
-        // Only a player's latest known match can suggest their current premade. Any mode with parties counts
-        // (duos often queue Swiftplay/Unrated); Deathmatch has no parties.
+        // Premades from recent history: two players on the same team now who shared a party in ANY of their
+        // matches from the last 2 days (not only their latest one — a duo member may have played solo since).
+        // Any mode with parties counts (duos often queue Swiftplay/Unrated); Deathmatch has no parties.
         var matches=roster.Where(player=>profiles.ContainsKey(player.Id))
             .SelectMany(player=>profiles[player.Id].Matches)
             .Where(match=>match.Completed&&match.Id!=""&&match.Id!=snapshot.Match&&match.Queue!="Deathmatch"&&
-                match.Started>=now.AddDays(-7)&&match.Started<=now)
+                match.Started>=now.AddDays(-2)&&match.Started<=now)
+            .GroupBy(match=>match.Id).Select(group=>group.First())
             .OrderByDescending(match=>match.Started).ToArray();
-        var newest=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
-        foreach(var match in matches)
-            foreach(var row in match.Roster)
-                if(!String.IsNullOrEmpty(row.Id)&&!newest.ContainsKey(row.Id))newest.Add(row.Id,match.Id);
-
         int groupIndex=confirmed.Count;
         foreach(var team in new[]{snapshot.Allies,snapshot.Enemies}){
-            // Anyone not already colored can still belong to a premade. A lone presence party id
-            // (e.g. one friend inside a trio) must not exclude that player from the history match.
             var members=new HashSet<string>(team.Where(player=>!String.IsNullOrEmpty(player.Id)).Select(player=>player.Id),StringComparer.OrdinalIgnoreCase);
             if(!members.Any(id=>!colors.ContainsKey(id)))continue;
-            var seen=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var parent=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
+            Func<string,string> find=null;
+            find=id=>{string p;if(!parent.TryGetValue(id,out p)||String.Equals(p,id,StringComparison.OrdinalIgnoreCase))return id;var root=find(p);parent[id]=root;return root;};
             foreach(var match in matches){
-                if(!seen.Add(match.Id))continue;
-                // Whole premade (duo, trio, 4- or 5-stack) from the latest shared match, grouped per team + party.
                 var groups=match.Roster.Where(row=>!String.IsNullOrEmpty(row.Id)&&members.Contains(row.Id)&&
-                        newest[row.Id]==match.Id&&!String.IsNullOrEmpty(row.Team)&&!String.IsNullOrEmpty(row.PartyId))
+                        !String.IsNullOrEmpty(row.Team)&&!String.IsNullOrEmpty(row.PartyId))
                     .GroupBy(row=>row.Team+"/"+row.PartyId,StringComparer.OrdinalIgnoreCase);
                 foreach(var group in groups){
                     var ids=group.Select(row=>row.Id).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-                    if(ids.Length<2||ids.All(id=>colors.ContainsKey(id)))continue;
-                    // Extend an existing (confirmed) party instead of splitting it into two colors.
-                    string colored=ids.FirstOrDefault(id=>colors.ContainsKey(id));
-                    var color=colored!=null?colors[colored]:Color.FromArgb(175,PartyColors[groupIndex++%PartyColors.Length]);
-                    foreach(string id in ids)if(!colors.ContainsKey(id))colors[id]=color;
+                    for(int i=1;i<ids.Length;i++){var a=find(ids[0]);var b=find(ids[i]);if(!String.Equals(a,b,StringComparison.OrdinalIgnoreCase))parent[b]=a;}
                 }
-                if(members.All(id=>colors.ContainsKey(id)))break;
+            }
+            var components=members.GroupBy(id=>find(id),StringComparer.OrdinalIgnoreCase).Where(group=>group.Count()>1)
+                .Select(group=>group.ToArray()).OrderBy(ids=>ids.OrderBy(id=>id,StringComparer.OrdinalIgnoreCase).First(),StringComparer.OrdinalIgnoreCase);
+            foreach(var ids in components){
+                if(ids.All(id=>colors.ContainsKey(id)))continue;
+                // Extend an existing (confirmed) party instead of splitting it into two colors.
+                string colored=ids.FirstOrDefault(id=>colors.ContainsKey(id));
+                var color=colored!=null?colors[colored]:Color.FromArgb(175,PartyColors[groupIndex++%PartyColors.Length]);
+                foreach(string id in ids)if(!colors.ContainsKey(id))colors[id]=color;
             }
         }
         return colors;
