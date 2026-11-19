@@ -29,7 +29,6 @@ $proj = Join-Path $work 'lunar.crproj'
 # Lunar loads resources (icon, translations, WebView2) by their literal names at runtime.
 @"
 <project outputDir="$outDir" baseDir="$baseDir" xmlns="http://confuser.codeplex.com">
-  <probePath>lib\webview2</probePath>
   <rule pattern="true" inherit="false">
     <protection id="anti ildasm" />
     <protection id="constants" />
@@ -39,8 +38,9 @@ $proj = Join-Path $work 'lunar.crproj'
     </protection>
   </rule>
   <module path="$leaf" />
+  <probePath>lib\webview2</probePath>
 </project>
-"@ | Set-Content -LiteralPath $proj -Encoding UTF8
+"@ | ForEach-Object { [IO.File]::WriteAllText($proj, $_, (New-Object Text.UTF8Encoding $false)) }
 
 & $cli -n $proj
 $protected = Join-Path $outDir $leaf
