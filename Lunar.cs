@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 [assembly: System.Reflection.AssemblyTitle("Lunar")]
 [assembly: System.Reflection.AssemblyProduct("Lunar")]
-[assembly: System.Reflection.AssemblyFileVersion("2.7.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("2.8.0.0")]
 
 namespace Lunar {
 static class Json {
@@ -1176,6 +1176,17 @@ static class Program {
                     menu.Close();
                 }
                 window.Close();
+            }
+            return 0;
+        }
+        if(args.Length==2 && args[0]=="--test-backdrop") {
+            // Focused full-screen backdrop: the taskbar must stay hidden behind it.
+            using(var backdrop=new OverlayBackdrop()){
+                Action<double> pump=seconds=>{var stop=DateTime.UtcNow.AddSeconds(seconds);while(DateTime.UtcNow<stop){Application.DoEvents();System.Threading.Thread.Sleep(15);}};
+                var screen=Screen.PrimaryScreen.Bounds;
+                backdrop.Bounds=screen;backdrop.Show();backdrop.Activate();pump(2);
+                Console.WriteLine("focused="+(Form.ActiveForm==backdrop));
+                using(var b=new Bitmap(screen.Width,screen.Height)){using(var g=Graphics.FromImage(b))g.CopyFromScreen(screen.Location,Point.Empty,screen.Size);b.Save(args[1]);}
             }
             return 0;
         }

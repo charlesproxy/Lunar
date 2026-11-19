@@ -353,6 +353,14 @@ sealed class DesktopIntegration:IDisposable {
                 e.Handled=true;
             }
         };
+        // The Discord switch toggles in place: the menu stays open so the new state is visible.
+        bool keepMenuOpen=false;
+        menu.ItemClicked+=delegate(object sender,ToolStripItemClickedEventArgs e){keepMenuOpen=e.ClickedItem==discordMenu;};
+        menu.Closing+=delegate(object sender,ToolStripDropDownClosingEventArgs e){
+            if(keepMenuOpen&&e.CloseReason==ToolStripDropDownCloseReason.ItemClicked){e.Cancel=true;menu.Invalidate();}
+            keepMenuOpen=false;
+        };
+        backdrop.Dismiss+=delegate{if(interactiveOverlay)HideOverlay();};
         UpdateDiscordButton();
         tray=new NotifyIcon{Icon=main.Icon,Text="Lunar",ContextMenuStrip=menu,Visible=true};
         tray.DoubleClick+=delegate{OpenMain();};
@@ -477,7 +485,8 @@ sealed class DesktopIntegration:IDisposable {
         if(restore)SetForegroundWindow(gameWindow);
     }
     bool OverlayHasFocus(){
-        return selection.IsHandleCreated&&GetForegroundWindow()==selection.Handle;
+        var focused=GetForegroundWindow();
+        return (selection.IsHandleCreated&&focused==selection.Handle)||(backdrop.IsHandleCreated&&focused==backdrop.Handle);
     }
     IntPtr ShortcutWindow(){
         return interactiveOverlay&&OverlayHasFocus()?interactiveGame:GetForegroundWindow();
@@ -499,10 +508,14 @@ sealed class DesktopIntegration:IDisposable {
         if(ExclusiveFullscreen(gameWindow)){MissOverlay();return;}
         interactiveGame=gameWindow;
         interactiveOverlay=true;
-        // The game keeps the focus: the overlay takes clicks without activating (WS_EX_NOACTIVATE), so a
-        // fullscreen game never loses the foreground and Windows does not bring the taskbar up over it.
+        // The dim backdrop covering the whole game takes the focus: VALORANT stops reading the mouse (the camera
+        // no longer moves and the cursor appears), and because the focused window still covers the whole
+        // monitor Windows keeps treating it as fullscreen, so the taskbar stays hidden.
         ShowOverlay(game);
         const uint NoSize=0x0001,NoMove=0x0002,NoActivate=0x0010,ShowWindow=0x0040;
+        SetForegroundWindow(backdrop.Handle);
+        backdrop.Activate();
+        // Activation raises the backdrop; put the overlay back on top of it.
         SetWindowPos(selection.Handle,new IntPtr(-1),0,0,0,0,NoSize|NoMove|NoActivate|ShowWindow); // HWND_TOPMOST
     }
     void ReadShortcutFallback(Rectangle game,IntPtr gameWindow){
@@ -781,8 +794,15 @@ sealed class OverlayBackdrop:Form {
         BackColor=Color.Black;
         Opacity=.24;
     }
+    // Esc or a click on the dimmed area closes the Live Match overlay.
+    public event EventHandler Dismiss;
     protected override bool ShowWithoutActivation{get{return true;}}
-    protected override CreateParams CreateParams{get{var cp=base.CreateParams;cp.ExStyle|=0x08000000|0x00000080;return cp;}}
+    protected override CreateParams CreateParams{get{var cp=base.CreateParams;cp.ExStyle|=0x00000080;return cp;}}
+    protected override void OnMouseDown(MouseEventArgs e){base.OnMouseDown(e);if(Dismiss!=null)Dismiss(this,EventArgs.Empty);}
+    protected override bool ProcessCmdKey(ref Message msg,Keys keyData){
+        if(keyData==Keys.Escape){if(Dismiss!=null)Dismiss(this,EventArgs.Empty);return true;}
+        return base.ProcessCmdKey(ref msg,keyData);
+    }
 }
 
 sealed class DiscordToggle:CheckBox {
