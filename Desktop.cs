@@ -649,9 +649,16 @@ sealed class DesktopIntegration:IDisposable {
     internal static bool OverlayRequested(string select,string dismissed,bool live){
         return select!=""?select!=dismissed:live;
     }
-    internal static Rectangle CenterOverlay(Rectangle game,int preferredHeight){
+    internal static Rectangle CenterOverlay(Rectangle game,int preferredHeight,bool agentSelect=false){
         int width=Math.Min(606,game.Width-24),height=Math.Min(preferredHeight,game.Height-24);
-        return new Rectangle(game.X+(game.Width-width)/2,game.Y+(game.Height-height)/2,width,height);
+        int x=game.X+(game.Width-width)/2;
+        if(agentSelect){
+            // Agent select: keep the countdown and the Lock In button (centre of the screen) visible —
+            // the overlay sits in the upper part, horizontally centred, ending at 46% of the screen height.
+            int top=Math.Max(game.Y+12,Math.Min(game.Y+(int)(game.Height*0.08),game.Y+(int)(game.Height*0.46)-height));
+            return new Rectangle(x,top,width,height);
+        }
+        return new Rectangle(x,game.Y+(game.Height-height)/2,width,height);
     }
     internal static Point ClampOverlayPosition(Rectangle game,Size size,Point position){
         return new Point(Math.Max(game.Left,Math.Min(position.X,game.Right-size.Width)),
@@ -659,14 +666,14 @@ sealed class DesktopIntegration:IDisposable {
     }
     void MoveOverlay(Point position){
         if(overlayGame.IsEmpty)return;
-        var center=CenterOverlay(overlayGame,selection.PreferredOverlayHeight).Location;
+        var center=CenterOverlay(overlayGame,selection.PreferredOverlayHeight,!selection.InMatch).Location;
         selection.Location=ClampOverlayPosition(overlayGame,selection.Size,position);
         overlayOffset=new Point(selection.Left-center.X,selection.Top-center.Y);
     }
     void ShowOverlay(Rectangle game){
         overlayGame=game;
         if(!selection.Visible)overlayOffset=Point.Empty;
-        var bounds=CenterOverlay(game,selection.PreferredOverlayHeight);
+        var bounds=CenterOverlay(game,selection.PreferredOverlayHeight,!selection.InMatch);
         bounds.Location=ClampOverlayPosition(game,bounds.Size,Point.Add(bounds.Location,new Size(overlayOffset)));
         if(selection.Bounds!=bounds)selection.Bounds=bounds;
         if(!selection.Visible)selection.Show();
@@ -1016,7 +1023,7 @@ sealed class AgentSelectOverlay:Form {
     readonly Image mark=TrackArt.Asset("lunar.png");
     readonly Font levelFont=new Font("Segoe UI",6,FontStyle.Bold);
     readonly List<KeyValuePair<Rectangle,Player>> hits=new List<KeyValuePair<Rectangle,Player>>();
-    bool InMatch{get{return snapshot.Status=="IN MATCH";}}
+    internal bool InMatch{get{return snapshot.Status=="IN MATCH";}}
     int AllyRows{get{return Math.Max(1,snapshot.Allies.Count);}}
     int EnemyRows{get{return InMatch?snapshot.Enemies.Count:0;}}
     public int PreferredOverlayHeight{get{return Header+(AllyRows+EnemyRows)*RowHeight+(EnemyRows>0?27:0)+47;}}

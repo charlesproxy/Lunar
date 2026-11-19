@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 [assembly: System.Reflection.AssemblyTitle("Lunar")]
 [assembly: System.Reflection.AssemblyProduct("Lunar")]
-[assembly: System.Reflection.AssemblyFileVersion("2.4.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("2.5.0.0")]
 
 namespace Lunar {
 static class Json {
@@ -1297,6 +1297,13 @@ static class Tests {
             Check(duo.ContainsKey("raph")&&duo.ContainsKey("gab")&&duo["raph"]==duo["gab"]&&!duo.ContainsKey("solo"),"duo detected from a recent Swiftplay match");
             profs["raph"].Matches.Clear();profs["raph"].Matches.Add(shared("Deathmatch","m-dm"));
             Check(LiveMatchArt.RosterParties(snap,profs,now).Count==0,"Deathmatch matches do not create premades");
+        {
+            var screen=new Rectangle(0,0,1920,1080);
+            var pick=DesktopIntegration.CenterOverlay(screen,328,true);
+            Check(pick.Bottom<=1080*0.46+1&&pick.X+pick.Width/2==960,"agent select overlay sits above the countdown, horizontally centred");
+            var inMatch=DesktopIntegration.CenterOverlay(screen,560,false);
+            Check(Math.Abs((inMatch.Y+inMatch.Height/2)-540)<=1,"in-match overlay stays centred");
+        }
         }
         using(var appIcon=AppIcon.Load())Check(appIcon!=null&&appIcon.Width>0,"app icon loads from the embedded resource");
         Check(!RiotReader.ClientProcessAlive(Int32.MaxValue),"a process that does not exist is not running");
