@@ -1204,10 +1204,11 @@ static class LiveMatchArt {
             if(!String.IsNullOrEmpty(player.PartyId)&&confirmed.ContainsKey(player.PartyId))
                 colors[player.Id]=confirmed[player.PartyId];
 
-        // Only a player's latest known competitive match can suggest their current premade.
+        // Only a player's latest known match can suggest their current premade. Any mode with parties counts
+        // (duos often queue Swiftplay/Unrated); Deathmatch has no parties.
         var matches=roster.Where(player=>profiles.ContainsKey(player.Id))
             .SelectMany(player=>profiles[player.Id].Matches)
-            .Where(match=>match.Completed&&match.Id!=""&&match.Id!=snapshot.Match&&match.Queue=="Competitive"&&
+            .Where(match=>match.Completed&&match.Id!=""&&match.Id!=snapshot.Match&&match.Queue!="Deathmatch"&&
                 match.Started>=now.AddDays(-7)&&match.Started<=now)
             .OrderByDescending(match=>match.Started).ToArray();
         var newest=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);

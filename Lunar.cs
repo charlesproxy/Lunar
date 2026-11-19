@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 [assembly: System.Reflection.AssemblyTitle("Lunar")]
 [assembly: System.Reflection.AssemblyProduct("Lunar")]
-[assembly: System.Reflection.AssemblyFileVersion("2.3.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("2.4.0.0")]
 
 namespace Lunar {
 static class Json {
@@ -955,7 +955,7 @@ class Window:LunarForm,IMessageFilter {
             s.Allies[i].AgentId=i%2==0?"add6443a-41bd-e414-f6ad-e58d267f4e95":"320b2a48-4d9b-a075-30f1-1f93a9b638fa";
             s.Enemies[i].AgentId=i%2==0?"320b2a48-4d9b-a075-30f1-1f93a9b638fa":"add6443a-41bd-e414-f6ad-e58d267f4e95";
         }
-        s.Allies[0].PartyId=s.Allies[1].PartyId="demo-party-1";
+        s.Allies[0].PartyId=s.Allies[1].PartyId="demo-party-1";s.Allies[4].AgentId=""; // still choosing an agent
         s.Enemies[2].PartyId=s.Enemies[3].PartyId="demo-party-2";
         PopulateDemo(s);s.Self=s.Allies[0];ShowSnapshot(s);surface.Updated="PREVIEW · sample data";
     }
@@ -1286,6 +1286,18 @@ static class Tests {
         Check(DiscordActivity.From(new Snapshot{Status="IN MATCH",Map="Ascent"},0).InMatch,"in-match activity is marked as a match");
         Check(DiscordActivity.From(new Snapshot{Status="IN MATCH",Map="Ascent",Self=new Player{AgentId="add6443a-41bd-e414-f6ad-e58d267f4e95"}},0).InMatch,"a match without a score is still marked as a match");
         Check(!DiscordActivity.From(new Snapshot(),0).Visible,"Discord activity hidden in the lobby and when VALORANT is closed");
+        {
+            var now=DateTime.Now;
+            Func<string,string,MatchRow> shared=(queue,id)=>{var m=new MatchRow{Id=id,Queue=queue,Completed=true,Started=now.AddHours(-1)};
+                m.Roster.Add(new ScorePlayer{Id="raph",Team="Red",PartyId="p1"});m.Roster.Add(new ScorePlayer{Id="gab",Team="Red",PartyId="p1"});m.Roster.Add(new ScorePlayer{Id="solo",Team="Red",PartyId="p2"});return m;};
+            var snap=new Snapshot{Match="live"};snap.Enemies.Add(new Player{Id="raph"});snap.Enemies.Add(new Player{Id="gab"});snap.Enemies.Add(new Player{Id="solo"});
+            var profs=new Dictionary<string,PlayerProfile>{{"raph",new PlayerProfile{Id="raph"}}};
+            profs["raph"].Matches.Add(shared("Swiftplay","m-swift"));
+            var duo=LiveMatchArt.RosterParties(snap,profs,now);
+            Check(duo.ContainsKey("raph")&&duo.ContainsKey("gab")&&duo["raph"]==duo["gab"]&&!duo.ContainsKey("solo"),"duo detected from a recent Swiftplay match");
+            profs["raph"].Matches.Clear();profs["raph"].Matches.Add(shared("Deathmatch","m-dm"));
+            Check(LiveMatchArt.RosterParties(snap,profs,now).Count==0,"Deathmatch matches do not create premades");
+        }
         using(var appIcon=AppIcon.Load())Check(appIcon!=null&&appIcon.Width>0,"app icon loads from the embedded resource");
         Check(!RiotReader.ClientProcessAlive(Int32.MaxValue),"a process that does not exist is not running");
         var guarded=Process.GetProcessesByName("csrss").FirstOrDefault();

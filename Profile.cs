@@ -279,8 +279,21 @@ sealed class HomeWelcome:UserControl {
 }
 static class AgentArt {
     static readonly Dictionary<string,Bitmap> thumbnails=new Dictionary<string,Bitmap>();
+    static readonly Font QuestionFont=new Font("Segoe UI",11,FontStyle.Bold);
     public static void Draw(Graphics g,string id,Rectangle r){
         Guid parsed;
+        // No agent picked yet (agent select): a "?" tile instead of an empty square.
+        if(String.IsNullOrEmpty(id)||(Guid.TryParse(id,out parsed)&&parsed==Guid.Empty)){
+            if(r.Width<=0||r.Height<=0)return;
+            var smooth=g.SmoothingMode;g.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            using(var brush=new SolidBrush(Color.FromArgb(34,40,52)))
+            using(var edge=new Pen(Color.FromArgb(60,Palette.Accent)))
+            using(var shape=Skin.Round(new Rectangle(r.X,r.Y,r.Width-1,r.Height-1),Math.Min(7,Math.Max(1,r.Height/4)))){g.FillPath(brush,shape);g.DrawPath(edge,shape);}
+            g.SmoothingMode=smooth;
+            using(var font=new Font("Segoe UI",Math.Max(7f,r.Height*0.42f),FontStyle.Bold))
+                TextRenderer.DrawText(g,"?",font,r,Palette.Muted,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPadding|TextFormatFlags.PreserveGraphicsTranslateTransform|TextFormatFlags.PreserveGraphicsClipping);
+            return;
+        }
         string key=Guid.TryParse(id??"",out parsed)?parsed.ToString():Catalog.AgentId(id);
         Image image=ApiArt.Agent(key);
         if(image==null){
