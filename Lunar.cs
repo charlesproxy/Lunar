@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 [assembly: System.Reflection.AssemblyTitle("Lunar")]
 [assembly: System.Reflection.AssemblyProduct("Lunar")]
-[assembly: System.Reflection.AssemblyFileVersion("2.5.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("2.6.0.0")]
 
 namespace Lunar {
 static class Json {
@@ -1300,7 +1300,7 @@ static class Tests {
         {
             var screen=new Rectangle(0,0,1920,1080);
             var pick=DesktopIntegration.CenterOverlay(screen,328,true);
-            Check(pick.Bottom<=1080*0.46+1&&pick.X+pick.Width/2==960,"agent select overlay sits above the countdown, horizontally centred");
+            Check(pick.Bottom<=1080*0.58+1&&pick.Bottom>=1080*0.55&&pick.X+pick.Width/2==960,"agent select overlay ends just above the countdown, horizontally centred");
             var inMatch=DesktopIntegration.CenterOverlay(screen,560,false);
             Check(Math.Abs((inMatch.Y+inMatch.Height/2)-540)<=1,"in-match overlay stays centred");
         }

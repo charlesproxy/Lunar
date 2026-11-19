@@ -653,9 +653,9 @@ sealed class DesktopIntegration:IDisposable {
         int width=Math.Min(606,game.Width-24),height=Math.Min(preferredHeight,game.Height-24);
         int x=game.X+(game.Width-width)/2;
         if(agentSelect){
-            // Agent select: keep the countdown and the Lock In button (centre of the screen) visible —
-            // the overlay sits in the upper part, horizontally centred, ending at 46% of the screen height.
-            int top=Math.Max(game.Y+12,Math.Min(game.Y+(int)(game.Height*0.08),game.Y+(int)(game.Height*0.46)-height));
+            // Agent select: the overlay ends just above the countdown (which starts at ~64% of the screen height),
+            // horizontally centred — not pushed to the top of the screen.
+            int top=Math.Max(game.Y+12,game.Y+(int)(game.Height*0.58)-height);
             return new Rectangle(x,top,width,height);
         }
         return new Rectangle(x,game.Y+(game.Height-height)/2,width,height);
