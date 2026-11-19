@@ -4,7 +4,7 @@
 param(
     [Parameter(Mandatory=$true)][string]$Version,
     [string]$Notes = '',
-    [string]$Repo = 'mucalol640-glitch/Lunar'
+    [string]$Repo = 'charlesproxy/Lunar'
 )
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot

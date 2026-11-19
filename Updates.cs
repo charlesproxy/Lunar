@@ -19,7 +19,7 @@ sealed class UpdatePackage {
 }
 
 static class LunarUpdates {
-    const string Feed="https://github.com/mucalol640-glitch/Lunar/releases";
+    const string Feed="https://github.com/charlesproxy/Lunar/releases";
     const int MaxManifest=32*1024;
     const int MaxPackage=64*1024*1024;
     static readonly string Root=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Lunar","updates");
@@ -95,8 +95,8 @@ static class LunarUpdates {
             }
         }
     }
-    const string LatestPage="https://github.com/mucalol640-glitch/Lunar/releases/latest";
-    const string LatestApi="https://api.github.com/repos/mucalol640-glitch/Lunar/releases/latest";
+    const string LatestPage="https://github.com/charlesproxy/Lunar/releases/latest";
+    const string LatestApi="https://api.github.com/repos/charlesproxy/Lunar/releases/latest";
     static readonly Regex TagPattern=new Regex(@"/releases/tag/(v\d+\.\d+(?:\.\d+)?)/?\z",RegexOptions.Compiled);
     static string latestTag,latestEtag,latestSource="";
     static DateTime apiBlockedUntil=DateTime.MinValue;

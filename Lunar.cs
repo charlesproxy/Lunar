@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 [assembly: System.Reflection.AssemblyTitle("Lunar")]
 [assembly: System.Reflection.AssemblyProduct("Lunar")]
-[assembly: System.Reflection.AssemblyFileVersion("3.0.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("3.1.0.0")]
 
 namespace Lunar {
 static class Json {
@@ -1093,6 +1093,16 @@ class Window:LunarForm,IMessageFilter {
     public void RenderTab(string path,int tab){SwitchPage(true);home.ActivateTab(tab);home.Refresh();Application.DoEvents();using(var b=new Bitmap(Width,Height)){DrawToBitmap(b,new Rectangle(0,0,b.Width,b.Height));b.Save(path);}}
     public void RenderDetail(string path){home.RenderMatch(path);}
     [DllImport("user32.dll")] static extern bool PrintWindow(IntPtr hwnd,IntPtr hdc,uint flags);
+    public void RenderOverlay(string path,bool agentSelect=false){
+        var s=current;
+        if(!agentSelect){s.Status="IN MATCH";s.Match="demo-match";s.AllyScore=7;s.EnemyScore=5;s.Allies[4].AgentId="add6443a-41bd-e414-f6ad-e58d267f4e95";}
+        using(var overlay=new AgentSelectOverlay(profiles)){
+            overlay.Apply(s);overlay.StartPosition=FormStartPosition.Manual;overlay.Location=new Point(-3000,-3000);
+            overlay.Size=new Size(606,overlay.PreferredOverlayHeight);overlay.Show();
+            var stop=DateTime.UtcNow.AddSeconds(2);while(DateTime.UtcNow<stop){Application.DoEvents();System.Threading.Thread.Sleep(15);}
+            using(var b=new Bitmap(overlay.Width,overlay.Height)){overlay.DrawToBitmap(b,new Rectangle(0,0,b.Width,b.Height));b.Save(path);}
+        }
+    }
     public void RenderFullscreen(string path){
         SwitchPage(false);SetFullscreenWarning(true);ShowUpdateReady(delegate{},"1.83");
         fullscreenNotice.Present(ClientSize,NoticeOffset);
@@ -1228,7 +1238,7 @@ static class Program {
             return 0;
         }
         if(args.Length==2 && args[0].StartsWith("--render")) {
-            using(var window=new Window(true)) { if(args[0]!="--render")window.Demo();if(args[0]=="--render-small")window.Size=window.MinimumSize;window.Show();Application.DoEvents();{var warm=DateTime.UtcNow.AddSeconds(6);while(DateTime.UtcNow<warm){Application.DoEvents();System.Threading.Thread.Sleep(40);}}if(args[0]=="--render-tracker"){window.ShowTracker();Application.DoEvents();using(var b=new Bitmap(window.Width,window.Height)){window.DrawToBitmap(b,new Rectangle(0,0,b.Width,b.Height));b.Save(args[1]);}}else if(args[0]=="--render-history")window.RenderHistory(args[1]);else if(args[0]=="--render-matches")window.RenderTab(args[1],1);else if(args[0]=="--render-agents")window.RenderTab(args[1],2);else if(args[0]=="--render-maps")window.RenderTab(args[1],3);else if(args[0]=="--render-detail")window.RenderDetail(args[1]);else if(args[0]=="--render-store")window.RenderStore(args[1]);else if(args[0]=="--render-settings")window.RenderSettings(args[1]);else if(args[0]=="--render-fullscreen")window.RenderFullscreen(args[1]);else using(var bitmap=new Bitmap(window.Width,window.Height)) {window.DrawToBitmap(bitmap,new Rectangle(0,0,bitmap.Width,bitmap.Height));bitmap.Save(args[1]);}window.Close();}return 0;
+            using(var window=new Window(true)) { if(args[0]!="--render")window.Demo();if(args[0]=="--render-small")window.Size=window.MinimumSize;window.Show();Application.DoEvents();{var warm=DateTime.UtcNow.AddSeconds(6);while(DateTime.UtcNow<warm){Application.DoEvents();System.Threading.Thread.Sleep(40);}}if(args[0]=="--render-tracker"){window.ShowTracker();Application.DoEvents();using(var b=new Bitmap(window.Width,window.Height)){window.DrawToBitmap(b,new Rectangle(0,0,b.Width,b.Height));b.Save(args[1]);}}else if(args[0]=="--render-history")window.RenderHistory(args[1]);else if(args[0]=="--render-matches")window.RenderTab(args[1],1);else if(args[0]=="--render-agents")window.RenderTab(args[1],2);else if(args[0]=="--render-maps")window.RenderTab(args[1],3);else if(args[0]=="--render-detail")window.RenderDetail(args[1]);else if(args[0]=="--render-store")window.RenderStore(args[1]);else if(args[0]=="--render-settings")window.RenderSettings(args[1]);else if(args[0]=="--render-fullscreen")window.RenderFullscreen(args[1]);else if(args[0]=="--render-overlay")window.RenderOverlay(args[1]);else if(args[0]=="--render-select")window.RenderOverlay(args[1],true);else using(var bitmap=new Bitmap(window.Width,window.Height)) {window.DrawToBitmap(bitmap,new Rectangle(0,0,bitmap.Width,bitmap.Height));bitmap.Save(args[1]);}window.Close();}return 0;
         }
         DesktopShortcut.Ensure();
         LunarLog.Start();
