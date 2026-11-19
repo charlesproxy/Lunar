@@ -499,12 +499,11 @@ sealed class DesktopIntegration:IDisposable {
         if(ExclusiveFullscreen(gameWindow)){MissOverlay();return;}
         interactiveGame=gameWindow;
         interactiveOverlay=true;
+        // The game keeps the focus: the overlay takes clicks without activating (WS_EX_NOACTIVATE), so a
+        // fullscreen game never loses the foreground and Windows does not bring the taskbar up over it.
         ShowOverlay(game);
-        if(!SetForegroundWindow(selection.Handle)&&!OverlayHasFocus()){
-            EndInteraction();
-            if(pendingMatch=="")HideOverlayWindows();
-            else backdrop.Hide();
-        }
+        const uint NoSize=0x0001,NoMove=0x0002,NoActivate=0x0010,ShowWindow=0x0040;
+        SetWindowPos(selection.Handle,new IntPtr(-1),0,0,0,0,NoSize|NoMove|NoActivate|ShowWindow); // HWND_TOPMOST
     }
     void ReadShortcutFallback(Rectangle game,IntPtr gameWindow){
         bool pressed=KeyDown(hotkey)&&
@@ -610,7 +609,8 @@ sealed class DesktopIntegration:IDisposable {
         catch(Exception){return true;}
     }
     void SyncOverlay(){
-        if(interactiveOverlay&&!OverlayHasFocus())HideOverlay();
+        // Hide the hotkey overlay only when the player leaves the game (Alt+Tab, another window in front).
+        if(interactiveOverlay&&!OverlayHasFocus()&&interactiveGame!=IntPtr.Zero&&GetForegroundWindow()!=interactiveGame)HideOverlay();
         var window=ShortcutWindow();
         var game=shortcutActive?ForegroundGame(window):Rectangle.Empty;
         if(game.IsEmpty){

@@ -5,7 +5,7 @@ using System.IO;
 using System.Windows.Forms;
 
 namespace Lunar {
-enum SettingsGlyph { Language, Keyboard, Update, Support }
+enum SettingsGlyph { Language, Keyboard, Update, Support, Startup }
 
 sealed class SettingsCard {
     public SettingsGlyph Glyph;
@@ -138,6 +138,10 @@ sealed class SettingsSurface:Panel {
                 case SettingsGlyph.Support:
                     using(var page=Skin.Round(new Rectangle(5,3,14,18),2))g.DrawPath(pen,page);
                     g.DrawLine(pen,8.5f,9,15.5f,9);g.DrawLine(pen,8.5f,12.5f,15.5f,12.5f);g.DrawLine(pen,8.5f,16,13,16);
+                    break;
+                case SettingsGlyph.Startup:
+                    g.DrawArc(pen,4,5,16,16,-60,300);
+                    g.DrawLine(pen,12,3,12,12);
                     break;
                 case SettingsGlyph.Update:
                     g.DrawArc(pen,4,4,16,16,-60,290);

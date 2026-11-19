@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 [assembly: System.Reflection.AssemblyTitle("Lunar")]
 [assembly: System.Reflection.AssemblyProduct("Lunar")]
-[assembly: System.Reflection.AssemblyFileVersion("2.6.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("2.7.0.0")]
 
 namespace Lunar {
 static class Json {
@@ -699,6 +699,19 @@ class Window:LunarForm,IMessageFilter {
         foreach(var button in new[]{homeNav,liveNav,friendsNav,trackerNav,storeNav,crosshairNav,settingsNav})button.Active=button==active;
     }
     internal DesktopIntegration Desktop{get{return desktop;}}
+    // Started with Windows (--tray): live in the tray without opening the window. The handle is still created
+    // so the hotkey, overlay and polling work exactly as when the window is open.
+    public bool StartHidden;
+    protected override void SetVisibleCore(bool value){
+        if(StartHidden){
+            StartHidden=false;
+            if(!IsHandleCreated)CreateHandle();
+            BeginInvoke((Action)RefreshData);
+            base.SetVisibleCore(false);
+            return;
+        }
+        base.SetVisibleCore(value);
+    }
     internal void ShowFromOtherInstance(){if(desktop!=null)desktop.ShowWindow();else{Show();Activate();}}
     internal string DiagnosticsText{get{return "Lunar "+LunarUpdates.DisplayVersion+"\r\n"+diagnostics;}}
     void ShowInfo(string title,string text,bool copyable){
@@ -995,9 +1008,17 @@ class Window:LunarForm,IMessageFilter {
             reset.Tick+=delegate{reset.Stop();reset.Dispose();if(!checkButton.IsDisposed)checkButton.Text=desktop.UpdateReady?"Update ready":"You're up to date";};
             reset.Start();
         };
+        var startupTitle=new Label{Text="Start with Windows",AutoSize=false,Size=new Size(360,24),ForeColor=Palette.Text,BackColor=Color.Transparent,Font=labelFont};
+        var startupHelp=new Label{Text="Open Lunar in the tray when you turn on the PC, ready for your next match.",AutoSize=false,Size=new Size(420,22),ForeColor=Palette.Muted,BackColor=Color.Transparent,Font=bodyFont};
+        var startupButton=new SoftButton{Size=new Size(150,38),FlatStyle=FlatStyle.Flat,ForeColor=Color.White,Font=new Font("Segoe UI",9,FontStyle.Bold),Cursor=Cursors.Hand,TextAlign=ContentAlignment.MiddleCenter};
+        startupButton.FlatAppearance.BorderSize=0;
+        Action paintStartup=delegate{bool on=StartupPreference.Enabled;startupButton.Text=on?"On":"Off";startupButton.BackColor=on?Palette.AccentSoft:Palette.Raised;startupButton.ForeColor=on?Color.White:Palette.Text;};
+        paintStartup();
+        startupButton.Click+=delegate{StartupPreference.Set(!StartupPreference.Enabled);paintStartup();};
         panel.Cards=new[]{
             new SettingsCard{Glyph=SettingsGlyph.Language,Title=languageTitle,Body=new[]{languageDescription},Action=languageSelect},
             new SettingsCard{Glyph=SettingsGlyph.Keyboard,Title=hotkeyTitle,Body=new[]{hotkeyHelp},Action=changeHotkeyButton,Keys=()=>desktop==null?HotkeyPreference.Current.Display:desktop.HotkeyDisplay},
+            new SettingsCard{Glyph=SettingsGlyph.Startup,Title=startupTitle,Body=new[]{startupHelp},Action=startupButton},
             new SettingsCard{Glyph=SettingsGlyph.Update,Title=updatesTitle,Body=new[]{languageHelp},Action=checkButton,Badge=LunarUpdates.DisplayVersion}
         };
         foreach(var card in panel.Cards){panel.Controls.Add(card.Title);foreach(var body in card.Body)panel.Controls.Add(body);panel.Controls.Add(card.Action);}
@@ -1191,6 +1212,7 @@ static class Program {
         DesktopShortcut.Ensure();
         LunarLog.Start();
         AppIcon.RefreshShellCacheIfChanged();
+        StartupPreference.Repair();
         // Single instance: opening Lunar again just brings the running window to the front (no second tray icon).
         bool first;
         var instance=new System.Threading.Mutex(true,@"Local\LunarSingleInstance",out first);
@@ -1199,7 +1221,7 @@ static class Program {
             return 0;
         }
         var show=new System.Threading.EventWaitHandle(false,System.Threading.EventResetMode.AutoReset,@"Local\LunarShowWindow");
-        var mainWindow=new Window();
+        var mainWindow=new Window{StartHidden=args.Contains("--tray")};
         var listener=new System.Threading.Thread(()=>{
             while(show.WaitOne()){
                 try{if(mainWindow.IsDisposed)break;mainWindow.BeginInvoke((Action)mainWindow.ShowFromOtherInstance);}catch(Exception){break;}
@@ -1242,6 +1264,34 @@ static class AppIcon {
         }catch(Exception e){LunarLog.Error("app","icon cache refresh failed",e);}
     }
     [DllImport("shell32.dll")] static extern void SHChangeNotify(int eventId,int flags,IntPtr item1,IntPtr item2);
+}
+// "Start with Windows": HKCU Run entry pointing at this executable with --tray (no admin rights needed).
+static class StartupPreference {
+    const string RunKey=@"Software\Microsoft\Windows\CurrentVersion\Run",Name="Lunar";
+    static string Command{get{return "\""+Application.ExecutablePath+"\" --tray";}}
+    public static bool Enabled{
+        get{try{using(var key=Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RunKey))return key!=null&&key.GetValue(Name) is string;}catch(Exception){return false;}}
+    }
+    public static void Set(bool enabled){
+        try{
+            using(var key=Microsoft.Win32.Registry.CurrentUser.CreateSubKey(RunKey)){
+                if(enabled)key.SetValue(Name,Command);else key.DeleteValue(Name,false);
+            }
+            LunarLog.Write("app","start with Windows "+(enabled?"on":"off"));
+        }catch(Exception e){LunarLog.Error("app","start with Windows could not be changed",e);}
+    }
+    // The installed copy keeps the Run entry pointing at itself (e.g. after a reinstall). Portable/test copies
+    // never touch an existing entry.
+    public static void Repair(){
+        string installed=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Programs","Lunar","Lunar.exe");
+        if(!String.Equals(Application.ExecutablePath,installed,StringComparison.OrdinalIgnoreCase))return;
+        try{
+            using(var key=Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RunKey,true)){
+                var value=key==null?null:key.GetValue(Name) as string;
+                if(value!=null&&value!=Command)key.SetValue(Name,Command);
+            }
+        }catch(Exception){}
+    }
 }
 static class DesktopShortcut {
     public static void Ensure(){
