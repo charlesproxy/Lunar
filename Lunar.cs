@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 [assembly: System.Reflection.AssemblyTitle("Lunar")]
 [assembly: System.Reflection.AssemblyProduct("Lunar")]
-[assembly: System.Reflection.AssemblyFileVersion("3.2.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("3.3.0.0")]
 
 namespace Lunar {
 static class Json {
@@ -1072,7 +1072,7 @@ class Window:LunarForm,IMessageFilter {
         return true;
     }
     void PopulateDemo(Snapshot s){
-        Catalog.Demo();foreach(var p in profiles.Values){p.PeakTier=26;p.PeakRR=412;int i=0;foreach(var m in p.Matches){m.AgentId=i%3==0?"8e253930-4c05-31dd-1b6c-968525494517":"add6443a-41bd-e414-f6ad-e58d267f4e95";m.SeasonId="demo-act";m.RRChange=m.Result==Outcome.Win?18:-16;m.Mvp=i==0?MvpKind.Match:i==3?MvpKind.Team:MvpKind.None;m.Metrics=new Performance{HasKda=true,HasDamage=true,HasHits=true,Kills=25-i*2,Deaths=12+i,Assists=6,Rounds=21,Damage=3500-i*100,Head=30,Body=60,Leg=10};m.Kda=m.Metrics.Kills+" / "+m.Metrics.Deaths+" / 6";int j=0;foreach(var player in s.Allies.Concat(s.Enemies)){m.Roster.Add(new ScorePlayer{Id=player.Id,Name=player.Name,Team=j<5?"Blue":"Red",Tier=20,Agent=j%2==0?"add6443a-41bd-e414-f6ad-e58d267f4e95":"320b2a48-4d9b-a075-30f1-1f93a9b638fa",Stats=new Performance{HasKda=true,HasDamage=true,HasHits=true,Kills=25-j,Deaths=12+j,Assists=4,Rounds=21,Damage=3000-j*50,Head=25,Body=70,Leg=5}});j++;}i++;}}
+        Catalog.Demo();foreach(var p in profiles.Values){p.PeakTier=26;p.PeakRR=412;int i=0;foreach(var m in p.Matches){m.AgentId=i%3==0?"8e253930-4c05-31dd-1b6c-968525494517":"add6443a-41bd-e414-f6ad-e58d267f4e95";m.SeasonId="demo-act";m.RRChange=m.Result==Outcome.Win?18:-16;m.Mvp=i==0?MvpKind.Match:i==3?MvpKind.Team:MvpKind.None;m.Metrics=new Performance{HasKda=true,HasDamage=true,HasHits=true,Kills=25-i*2,Deaths=12+i,Assists=6,Rounds=21,Damage=3500-i*100,Head=30,Body=60,Leg=10};m.Kda=m.Metrics.Kills+" / "+m.Metrics.Deaths+" / 6";int j=0;foreach(var player in s.Allies.Concat(s.Enemies)){m.Roster.Add(new ScorePlayer{Id=player.Id,Name=player.Name,Team=j<5?"Blue":"Red",Tier=20,Agent=j%2==0?"add6443a-41bd-e414-f6ad-e58d267f4e95":"320b2a48-4d9b-a075-30f1-1f93a9b638fa",PartyId=player.PartyId,Stats=new Performance{HasKda=true,HasDamage=true,HasHits=true,Kills=25-j,Deaths=12+j,Assists=4,Rounds=21,Damage=3000-j*50,Head=25,Body=70,Leg=5}});j++;}i++;}}
     }
     public void RenderTab(string path,int tab){SwitchPage(true);home.ActivateTab(tab);home.Refresh();Application.DoEvents();using(var b=new Bitmap(Width,Height)){DrawToBitmap(b,new Rectangle(0,0,b.Width,b.Height));b.Save(path);}}
     public void RenderDetail(string path){home.RenderMatch(path);}

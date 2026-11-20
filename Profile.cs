@@ -1108,10 +1108,11 @@ class MatchDetailView:Control {
         g.SetClip(new Rectangle(0,BoardTop,Width,Math.Max(0,Height-BoardTop)),
             System.Drawing.Drawing2D.CombineMode.Intersect);
         int top=BoardTop-scroll;
+        var duo=DuoColors(Match.Roster);
         foreach(var team in teams){
             var players=team.OrderByDescending(player=>player.Stats.Kills).ToList();
             int panelHeight=GroupHeaderHeight+players.Count*rowHeight+6;
-            DrawTeam(g,team.Key,players,new Rectangle(ContentLeft,top,ContentWidth,panelHeight),rowHeight);
+            DrawTeam(g,team.Key,players,new Rectangle(ContentLeft,top,ContentWidth,panelHeight),rowHeight,duo);
             top+=panelHeight+GroupGap;
         }
         g.Restore(state);
@@ -1131,7 +1132,22 @@ class MatchDetailView:Control {
         Center(g,Match.Score,24,Palette.Text,new Rectangle(rect.Right-156,rect.Y+10,139,45),true);
         if(outcome!="")Center(g,outcome,8,accent,new Rectangle(rect.Right-156,rect.Y+56,139,22),true);
     }
-    void DrawTeam(Graphics g,string team,IList<ScorePlayer> players,Rectangle panel,int rowHeight){
+    static readonly Color[] DuoPalette={Color.FromArgb(111,221,151),Color.FromArgb(103,175,255),
+        Color.FromArgb(240,170,85),Color.FromArgb(202,145,245),Color.FromArgb(240,124,170)};
+    internal static Dictionary<string,Color> DuoColors(IEnumerable<ScorePlayer> roster){
+        var colors=new Dictionary<string,Color>(StringComparer.OrdinalIgnoreCase);
+        if(roster==null)return colors;
+        int idx=0;
+        foreach(var group in roster.Where(p=>!String.IsNullOrEmpty(p.PartyId)&&!String.IsNullOrEmpty(p.Id))
+            .GroupBy(p=>(p.Team??"")+"/"+p.PartyId,StringComparer.OrdinalIgnoreCase)
+            .Where(gp=>gp.Select(p=>p.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count()>1)
+            .OrderBy(gp=>gp.Key,StringComparer.OrdinalIgnoreCase)){
+            var color=DuoPalette[idx++%DuoPalette.Length];
+            foreach(var p in group)colors[p.Id]=color;
+        }
+        return colors;
+    }
+    void DrawTeam(Graphics g,string team,IList<ScorePlayer> players,Rectangle panel,int rowHeight,IDictionary<string,Color> duo){
         if(panel.Bottom<=BoardTop||panel.Top>=Height)return;
         Color accent=String.Equals(team,"Blue",StringComparison.OrdinalIgnoreCase)?Blue
             :String.Equals(team,"Red",StringComparison.OrdinalIgnoreCase)?Red:Palette.Accent;
@@ -1162,6 +1178,11 @@ class MatchDetailView:Control {
                 using(var shade=new SolidBrush(Palette.Raised))
                     g.FillRectangle(shade,panel.X+7,y+2,panel.Width-14,rowHeight-3);
             }
+            Color duoColor;
+            if(duo!=null&&!String.IsNullOrEmpty(player.Id)&&duo.TryGetValue(player.Id,out duoColor))
+                using(var bar=new SolidBrush(duoColor))
+                using(var barShape=Skin.Round(new Rectangle(panel.X+8,y+5,3,rowHeight-9),1))
+                    g.FillPath(bar,barShape);
             int center=y+rowHeight/2;
             AgentArt.Draw(g,player.Agent,new Rectangle(panel.X+15,center-14,28,28));
             bool canOpen=!String.IsNullOrEmpty(player.Id)&&RiotStatsClient.HasRiotId(player.Name);
@@ -1198,6 +1219,9 @@ static class ProfileChecks {
         Check(metric.HasDamage&&Math.Abs(metric.ADR.Value-150.5)<0.001,"ADR preserves decimals and excludes team damage");
         Check(metric.HasHits&&metric.HS==25,"HS uses hit counts and excludes friendly hits");
         var row=new MatchRow();StatsMetrics.Enrich(fixture,row,"me");Check(row.AgentId=="agent"&&row.SeasonId=="act"&&row.Roster.Count==3&&row.Roster[0].Name=="Name#BR1","match enrichment includes agent season and scoreboard");
+        var duoRoster=new List<ScorePlayer>{new ScorePlayer{Id="a",Team="Blue",PartyId="p1"},new ScorePlayer{Id="b",Team="Blue",PartyId="p1"},new ScorePlayer{Id="c",Team="Blue",PartyId="p2"},new ScorePlayer{Id="d",Team="Red",PartyId="p3"},new ScorePlayer{Id="e",Team="Red",PartyId="p3"}};
+        var duoColors=MatchDetailView.DuoColors(duoRoster);
+        Check(duoColors["a"]==duoColors["b"]&&!duoColors.ContainsKey("c")&&duoColors["d"]==duoColors["e"]&&duoColors["a"]!=duoColors["d"],"scoreboard marks premades by shared party");
         var missing=StatsMetrics.ForPlayer(D(new {players=new object[0]}),D(new {subject="me"}));Check(!missing.HasKda&&!missing.HasDamage&&!missing.HasHits&&StatsMetrics.KD(missing)=="—","missing metrics are not zeros");
         var culture=System.Threading.Thread.CurrentThread.CurrentCulture;try{System.Threading.Thread.CurrentThread.CurrentCulture=new System.Globalization.CultureInfo("pt-BR");Check(Math.Abs(StatsMetrics.ForPlayer(fixture,me).Damage-150.5)<0.001,"numeric metrics work under Portuguese culture");}finally{System.Threading.Thread.CurrentThread.CurrentCulture=culture;}
         var rows=new List<MatchRow>{new MatchRow{Id="a",Completed=true,Result=Outcome.Win,Metrics=new Performance{HasKda=true,HasDamage=true,HasHits=true,Kills=10,Deaths=1,Rounds=1,Damage=100,Head=1}},new MatchRow{Id="b",Completed=true,Result=Outcome.Loss,Metrics=new Performance{HasKda=true,HasDamage=true,HasHits=true,Kills=0,Deaths=9,Rounds=3,Damage=900,Head=0,Body=9}}};
