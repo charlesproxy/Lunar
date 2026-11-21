@@ -82,7 +82,7 @@ static class RiotStatsClient {
         internal DateTime Expires;
         internal string Pd {get{return "https://pd."+Shard+".a.pvp.net";}}
     }
-    static readonly SemaphoreSlim sessionGate=new SemaphoreSlim(1,1),networkGate=new SemaphoreSlim(10,10),backgroundGate=new SemaphoreSlim(4,4);
+    static readonly SemaphoreSlim sessionGate=new SemaphoreSlim(1,1),networkGate=new SemaphoreSlim(16,16),backgroundGate=new SemaphoreSlim(8,8);
     static volatile Session session;
     static int sessionBuilds,sessionReuses;
     internal static int SessionBuildCount {get{return Volatile.Read(ref sessionBuilds);}}
