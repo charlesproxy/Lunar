@@ -317,11 +317,11 @@ static class RiotStatsClient {
     static async Task<HistoryPage> BackgroundHistory(Player player,CancellationToken cancel){
         await backgroundGate.WaitAsync(cancel).ConfigureAwait(false);
         try{
-            var page=await LoadPage(player,0,5,"Competitive",cancel).ConfigureAwait(false);
+            var page=await LoadPage(player,0,10,"Competitive",cancel).ConfigureAwait(false);
             int completed=page.Items.Count(item=>!Json.B(item,"unavailable")&&Json.B(Json.Get(item,"matchInfo"),"isCompleted"));
             if(completed<3&&!page.CompetitiveOnly){
                 try{
-                    var any=await LoadPage(player,0,5,"All modes",cancel).ConfigureAwait(false);
+                    var any=await LoadPage(player,0,10,"All modes",cancel).ConfigureAwait(false);
                     var seen=new HashSet<string>(page.Items.Select(item=>Json.S(Json.Get(item,"matchInfo"),"matchId")),StringComparer.OrdinalIgnoreCase);
                     page.Items=page.Items.Concat(any.Items.Where(item=>seen.Add(Json.S(Json.Get(item,"matchInfo"),"matchId")))).ToArray();
                     LunarLog.Write("profile","live profile: "+completed+" competitive matches → added "+any.Items.Length+" from other modes");

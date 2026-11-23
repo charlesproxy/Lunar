@@ -867,6 +867,12 @@ class ProfileCanvas:Control {
         int rrWidth=0;
         if(rr!=""){T(g,rr,10,Purple,new Rectangle(x+76,y+82,w-88,24),true);using(var f=new Font("Segoe UI",10,FontStyle.Bold))rrWidth=LunarText.MeasureText(g,rr,f).Width;}
         if(note!="")T(g,(rr==""?"":"· ")+LunarLanguage.Translate(note),8,Palette.Muted,new Rectangle(x+76+rrWidth,y+83,Math.Max(0,w-88-rrWidth),24));
+        if(rr!=""&&Profile.Tier>=3&&Profile.Tier<27){
+            var bar=new Rectangle(x+76,y+105,w-92,5);
+            using(var tp=Skin.Round(bar,2))using(var tb=new SolidBrush(Palette.Raised))g.FillPath(tb,tp);
+            int fill=Math.Max(2,(int)(bar.Width*Math.Min(1f,Math.Max(0,Profile.RR)/100f)));
+            using(var fp=Skin.Round(new Rectangle(bar.X,bar.Y,fill,bar.Height),2))using(var fb=new SolidBrush(Purple))g.FillPath(fb,fp);
+        }
         RankArt.Draw(g,Profile.PeakTier,new Rectangle(x+16,y+122,24,24));
         string peak=Profile.PeakTier<0?"—":RankArt.Name(Profile.PeakTier)+(Profile.PeakRR>=0?" · "+Profile.PeakRR+" RR":"");
         T(g,"Peak · "+peak,9,Palette.Muted,new Rectangle(x+48,y+119,w-60,29),true);
